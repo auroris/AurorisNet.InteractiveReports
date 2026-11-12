@@ -56,10 +56,10 @@ public sealed class LoggingHttpTests
         {
             await using (var connection = new SqliteConnection(connectionString))
             {
-                await connection.OpenAsync();
+                await connection.OpenAsync(TestContext.Current.CancellationToken);
                 await using var command = connection.CreateCommand();
                 command.CommandText = "CREATE TABLE LOG_ROWS (ID INTEGER, LABEL TEXT); INSERT INTO LOG_ROWS VALUES (1, 'private-row-value')";
-                await command.ExecuteNonQueryAsync();
+                await command.ExecuteNonQueryAsync(TestContext.Current.CancellationToken);
             }
 
             var logger = new CapturingLogger();
@@ -88,21 +88,19 @@ public sealed class LoggingHttpTests
 
             app = builder.Build();
             app.MapInteractiveReportJson("/api/reports", logger);
-            await app.StartAsync();
+            await app.StartAsync(TestContext.Current.CancellationToken);
 
             var address = app.Services.GetRequiredService<IServer>()
                 .Features.Get<IServerAddressesFeature>()!.Addresses.Single();
             client = new HttpClient { BaseAddress = new Uri(address) };
 
-            using var schema = await client.GetAsync("/api/reports/logged/schema");
+            using var schema = await client.GetAsync("/api/reports/logged/schema", TestContext.Current.CancellationToken);
             Assert.Equal(HttpStatusCode.OK, schema.StatusCode);
-            using var query = await client.PostAsJsonAsync(
-                "/api/reports/logged/query",
-                new ReportState());
+            using var query = await client.PostAsJsonAsync("/api/reports/logged/query", new ReportState(), cancellationToken: TestContext.Current.CancellationToken);
             Assert.Equal(HttpStatusCode.OK, query.StatusCode);
-            using var missing = await client.GetAsync("/api/reports/missing/schema");
+            using var missing = await client.GetAsync("/api/reports/missing/schema", TestContext.Current.CancellationToken);
             Assert.Equal(HttpStatusCode.NotFound, missing.StatusCode);
-            using var broken = await client.GetAsync("/api/reports/broken/schema");
+            using var broken = await client.GetAsync("/api/reports/broken/schema", TestContext.Current.CancellationToken);
             Assert.Equal(HttpStatusCode.InternalServerError, broken.StatusCode);
 
             Assert.Contains(logger.Events, item =>
@@ -141,7 +139,7 @@ public sealed class LoggingHttpTests
             client?.Dispose();
             if (app is not null)
             {
-                await app.StopAsync();
+                await app.StopAsync(TestContext.Current.CancellationToken);
                 await app.DisposeAsync();
             }
             SqliteConnection.ClearAllPools();
@@ -178,13 +176,13 @@ public sealed class LoggingHttpTests
 
             app = builder.Build();
             app.MapInteractiveReportJson("/api/reports", logger);
-            await app.StartAsync();
+            await app.StartAsync(TestContext.Current.CancellationToken);
 
             var address = app.Services.GetRequiredService<IServer>()
                 .Features.Get<IServerAddressesFeature>()!.Addresses.Single();
             client = new HttpClient { BaseAddress = new Uri(address) };
 
-            using var response = await client.GetAsync("/api/reports/unreachable/schema");
+            using var response = await client.GetAsync("/api/reports/unreachable/schema", TestContext.Current.CancellationToken);
             Assert.Equal(HttpStatusCode.InternalServerError, response.StatusCode);
 
             Assert.Contains(logger.Events, item =>
@@ -202,7 +200,7 @@ public sealed class LoggingHttpTests
             client?.Dispose();
             if (app is not null)
             {
-                await app.StopAsync();
+                await app.StopAsync(TestContext.Current.CancellationToken);
                 await app.DisposeAsync();
             }
             SqliteConnection.ClearAllPools();
@@ -221,10 +219,10 @@ public sealed class LoggingHttpTests
         {
             await using (var connection = new SqliteConnection(connectionString))
             {
-                await connection.OpenAsync();
+                await connection.OpenAsync(TestContext.Current.CancellationToken);
                 await using var command = connection.CreateCommand();
                 command.CommandText = "CREATE TABLE LOG_AUTH (ID INTEGER, LABEL TEXT); INSERT INTO LOG_AUTH VALUES (1, 'val')";
-                await command.ExecuteNonQueryAsync();
+                await command.ExecuteNonQueryAsync(TestContext.Current.CancellationToken);
             }
 
             var logger = new CapturingLogger();
@@ -248,16 +246,16 @@ public sealed class LoggingHttpTests
 
             app = builder.Build();
             app.MapInteractiveReportJson("/api/reports", logger);
-            await app.StartAsync();
+            await app.StartAsync(TestContext.Current.CancellationToken);
 
             var address = app.Services.GetRequiredService<IServer>()
                 .Features.Get<IServerAddressesFeature>()!.Addresses.Single();
             client = new HttpClient { BaseAddress = new Uri(address) };
 
-            using var unauth = await client.GetAsync("/api/reports/authonly/schema");
+            using var unauth = await client.GetAsync("/api/reports/authonly/schema", TestContext.Current.CancellationToken);
             Assert.Equal(HttpStatusCode.Unauthorized, unauth.StatusCode);
 
-            using var adminUnauth = await client.GetAsync("/api/reports/__saved-reports/schema");
+            using var adminUnauth = await client.GetAsync("/api/reports/__saved-reports/schema", TestContext.Current.CancellationToken);
             Assert.Equal(HttpStatusCode.Unauthorized, adminUnauth.StatusCode);
 
             Assert.Contains(logger.Events, item =>
@@ -273,7 +271,7 @@ public sealed class LoggingHttpTests
             client?.Dispose();
             if (app is not null)
             {
-                await app.StopAsync();
+                await app.StopAsync(TestContext.Current.CancellationToken);
                 await app.DisposeAsync();
             }
             SqliteConnection.ClearAllPools();
@@ -292,10 +290,10 @@ public sealed class LoggingHttpTests
         {
             await using (var connection = new SqliteConnection(connectionString))
             {
-                await connection.OpenAsync();
+                await connection.OpenAsync(TestContext.Current.CancellationToken);
                 await using var command = connection.CreateCommand();
                 command.CommandText = "CREATE TABLE LIFE_ROWS (ID INTEGER, LABEL TEXT); INSERT INTO LIFE_ROWS VALUES (1, 'test')";
-                await command.ExecuteNonQueryAsync();
+                await command.ExecuteNonQueryAsync(TestContext.Current.CancellationToken);
             }
 
             var logger = new CapturingLogger();
@@ -321,7 +319,7 @@ public sealed class LoggingHttpTests
 
             app = builder.Build();
             app.MapInteractiveReportJson("/api/reports", logger);
-            await app.StartAsync();
+            await app.StartAsync(TestContext.Current.CancellationToken);
 
             var server = app.Services.GetRequiredService<IInteractiveReportServer>();
             var claims = new System.Security.Claims.ClaimsPrincipal(
@@ -336,35 +334,27 @@ public sealed class LoggingHttpTests
             };
 
             // Create directly in a configured family with no existing stored document.
-            var created = await server.SaveDocument(
-                "demo",
-                _ => Task.FromResult<SaveReportRequest?>(new SaveReportRequest { Title = "Custom View", State = new ReportState(), IsGlobal = false }),
-                context);
+            var created = await server.SaveDocument("demo", _ => Task.FromResult<SaveReportRequest?>(new SaveReportRequest { Title = "Custom View", State = new ReportState(), IsGlobal = false }), context, TestContext.Current.CancellationToken);
             Assert.Null(created.Failure);
             var newId = created.Value!.Id;
 
             // 3. Update document
-            var updated = await server.UpdateDocument(
-                newId,
-                _ => Task.FromResult<UpdateSavedReportRequest?>(new UpdateSavedReportRequest { Title = "Renamed View" }),
-                context);
+            var updated = await server.UpdateDocument(newId, _ => Task.FromResult<UpdateSavedReportRequest?>(new UpdateSavedReportRequest { Title = "Renamed View" }), context, TestContext.Current.CancellationToken);
             Assert.Null(updated.Failure);
 
             // 4. Export document
-            var exported = await server.ExportDocument(newId, context);
+            var exported = await server.ExportDocument(newId, context, TestContext.Current.CancellationToken);
             Assert.Null(exported.Failure);
 
             // 5. Delete document
-            var deleted = await server.DeleteDocument(newId, context);
+            var deleted = await server.DeleteDocument(newId, context, TestContext.Current.CancellationToken);
             Assert.Null(deleted.Failure);
 
             // 6. Administrator list mutations
-            var granted = await server.SetAdministrators(
-                _ => Task.FromResult<IReadOnlyCollection<string?>?>(["new-admin"]), context);
+            var granted = await server.SetAdministrators(_ => Task.FromResult<IReadOnlyCollection<string?>?>(["new-admin"]), context, TestContext.Current.CancellationToken);
             Assert.Null(granted.Failure);
 
-            var revoked = await server.SetAdministrators(
-                _ => Task.FromResult<IReadOnlyCollection<string?>?>([]), context);
+            var revoked = await server.SetAdministrators(_ => Task.FromResult<IReadOnlyCollection<string?>?>([]), context, TestContext.Current.CancellationToken);
             Assert.Null(revoked.Failure);
 
             // Assertions on log events
@@ -399,7 +389,7 @@ public sealed class LoggingHttpTests
             client?.Dispose();
             if (app is not null)
             {
-                await app.StopAsync();
+                await app.StopAsync(TestContext.Current.CancellationToken);
                 await app.DisposeAsync();
             }
             SqliteConnection.ClearAllPools();

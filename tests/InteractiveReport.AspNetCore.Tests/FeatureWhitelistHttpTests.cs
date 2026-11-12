@@ -28,7 +28,7 @@ public sealed class FeatureWhitelistHttpTests : IAsyncLifetime
     private WebApplication? _app;
     private HttpClient _client = null!;
 
-    public async Task InitializeAsync()
+    public async ValueTask InitializeAsync()
     {
         _tempRoot = Directory.CreateTempSubdirectory("interactive-report-features-").FullName;
         var dataPath = Path.Combine(_tempRoot, "feature-data.db");
@@ -102,7 +102,7 @@ public sealed class FeatureWhitelistHttpTests : IAsyncLifetime
         _client = new HttpClient { BaseAddress = new Uri(address) };
     }
 
-    public async Task DisposeAsync()
+    public async ValueTask DisposeAsync()
     {
         _client?.Dispose();
         if (_app is not null)
@@ -126,14 +126,14 @@ public sealed class FeatureWhitelistHttpTests : IAsyncLifetime
                 new { kind = "sort", sorts = new[] { new { col = "ID", dir = "desc" } } },
                 new { kind = "filter", filters = new[] { new { expr = "ID > 0" } } },
             } } },
-        });
+        }, cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         Assert.Equal("text/html", response.Content.Headers.ContentType!.MediaType);
         Assert.Equal("utf-8", response.Content.Headers.ContentType.CharSet);
         Assert.Equal("attachment", response.Content.Headers.ContentDisposition!.DispositionType);
         Assert.Equal("open.html", response.Content.Headers.ContentDisposition.FileName!.Trim('"'));
         Assert.True(response.Headers.CacheControl!.NoStore);
-        var html = await response.Content.ReadAsStringAsync();
+        var html = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
         Assert.StartsWith("<!doctype html>", html);
         Assert.Contains("<title>Orders &lt;print&gt;</title>", html);
         Assert.Contains("<style>", html);
@@ -151,7 +151,7 @@ public sealed class FeatureWhitelistHttpTests : IAsyncLifetime
     [InlineData("oversized", HttpStatusCode.UnprocessableEntity, "IR-1102")]
     public async Task Html_export_enforces_permissions_and_refuses_incomplete_documents(string name, HttpStatusCode status, string code)
     {
-        using var response = await _client.PostAsJsonAsync($"/api/download/{name}/html", new { });
+        using var response = await _client.PostAsJsonAsync($"/api/download/{name}/html", new { }, cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal(status, response.StatusCode);
         Assert.Equal(code, (await ReadJson(response)).GetProperty("code").GetString());
         Assert.Null(response.Content.Headers.ContentDisposition);
@@ -176,16 +176,13 @@ public sealed class FeatureWhitelistHttpTests : IAsyncLifetime
     [Fact]
     public async Task Export_is_refused_when_download_is_not_whitelisted()
     {
-        using var refused = await _client.PostAsync(
-            "/api/download/locked/csv", JsonContent.Create(new { }));
+        using var refused = await _client.PostAsync("/api/download/locked/csv", JsonContent.Create(new { }), TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.Forbidden, refused.StatusCode);
         var problem = await ReadJson(refused);
         Assert.Equal("IR-1100", problem.GetProperty("code").GetString());
         Assert.Contains("download", problem.GetProperty("details").GetString());
 
-        using var allowed = await _client.PostAsync(
-            "/api/download/open/csv",
-            JsonContent.Create(new
+        using var allowed = await _client.PostAsync("/api/download/open/csv", JsonContent.Create(new
             {
                 page = new { index = 2, size = 1 },
                 activeTable = "base",
@@ -200,11 +197,11 @@ public sealed class FeatureWhitelistHttpTests : IAsyncLifetime
                         },
                     },
                 },
-            }));
+            }), TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, allowed.StatusCode);
         Assert.Equal("text/csv", allowed.Content.Headers.ContentType?.MediaType);
         Assert.Equal("false", allowed.Headers.GetValues("X-IR-Truncated").Single());
-        var csv = await allowed.Content.ReadAsStringAsync();
+        var csv = await allowed.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
         Assert.Contains("Id,Renamed\r\n", csv);
         Assert.Contains("1,first\r\n", csv);
         Assert.Contains("2,second\r\n", csv);
@@ -216,15 +213,13 @@ public sealed class FeatureWhitelistHttpTests : IAsyncLifetime
         var lockedId = await ReportDocumentTestIds.Default(_app!.Services, "locked");
         var openId = await ReportDocumentTestIds.Default(_app.Services, "open");
         var body = new { title = "Blocked", state = new { } };
-        using var refused = await _client.PostAsync(
-            $"/api/reports/locked/saved", JsonContent.Create(body));
+        using var refused = await _client.PostAsync($"/api/reports/locked/saved", JsonContent.Create(body), TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.Forbidden, refused.StatusCode);
         var problem = await ReadJson(refused);
         Assert.Equal("IR-1100", problem.GetProperty("code").GetString());
         Assert.Contains("savedReports", problem.GetProperty("details").GetString());
 
-        using var allowed = await _client.PostAsync(
-            $"/api/reports/open/saved", JsonContent.Create(new { title = "Allowed", state = new { } }));
+        using var allowed = await _client.PostAsync($"/api/reports/open/saved", JsonContent.Create(new { title = "Allowed", state = new { } }), TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.Created, allowed.StatusCode);
     }
 
@@ -249,8 +244,7 @@ public sealed class FeatureWhitelistHttpTests : IAsyncLifetime
                 },
             },
         };
-        using var response = await _client.PostAsync(
-            "/api/reports/locked/query", JsonContent.Create(state));
+        using var response = await _client.PostAsync("/api/reports/locked/query", JsonContent.Create(state), TestContext.Current.CancellationToken);
         var result = await ReadJson(response);
         Assert.Equal(1, result.GetProperty("rows").GetArrayLength());
     }

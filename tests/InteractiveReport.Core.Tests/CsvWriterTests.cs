@@ -121,7 +121,7 @@ public class CsvWriterTests
         var wide = new string('é', 70_000) + "|" + new string('中', 40_000);
         using var destination = new MemoryStream();
 
-        await CsvWriter.WriteToAsync(destination, Columns, [Row(wide, 1m), Row("after", 2m)]);
+        await CsvWriter.WriteToAsync(destination, Columns, [Row(wide, 1m), Row("after", 2m)], ct: TestContext.Current.CancellationToken);
 
         var csv = Encoding.UTF8.GetString(destination.ToArray(), 3, (int)destination.Length - 3);
         Assert.Equal("Customer Name,Amount\r\n" + wide + ",1\r\nafter,2\r\n", csv);

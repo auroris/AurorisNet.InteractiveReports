@@ -311,10 +311,7 @@ public sealed class StateStructureValidatorTests : IClassFixture<SqliteE2EFixtur
         };
 
         var exception = await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            _executor.Query(
-                definition,
-                new ReportState(),
-                new Dictionary<string, object?>()));
+            _executor.Query(definition, new ReportState(), new Dictionary<string, object?>(), TestContext.Current.CancellationToken));
 
         Assert.Contains("default state document is structurally invalid", exception.Message, StringComparison.Ordinal);
         Assert.Contains("tables.broken", exception.Message, StringComparison.Ordinal);

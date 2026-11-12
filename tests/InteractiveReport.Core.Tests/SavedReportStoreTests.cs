@@ -4,7 +4,7 @@ using Microsoft.Data.Sqlite;
 
 namespace InteractiveReport.Core.Tests;
 
-public sealed class SqliteSavedReportStoreTests : SavedReportStoreCorpus, IDisposable
+public sealed class SqliteSavedReportStoreTests : SavedReportStoreCorpus
 {
     private readonly SqliteConnection _keepAlive;
     private readonly string _cs;
@@ -32,11 +32,11 @@ public sealed class SqliteSavedReportStoreTests : SavedReportStoreCorpus, IDispo
                 TableName: tableName),
             new FixedConnectionFactory(() => new SqliteConnection(_cs)));
 
-        await store.Create(Report("First"));
+        await store.Create(Report("First"), TestContext.Current.CancellationToken);
         tableName = "IR_SAVED_B";
-        await store.Create(Report("Second"));
+        await store.Create(Report("Second"), TestContext.Current.CancellationToken);
 
-        var currentTarget = await store.ListAll();
+        var currentTarget = await store.ListAll(TestContext.Current.CancellationToken);
         Assert.Equal("Second", Assert.Single(currentTarget).Title);
     }
 
@@ -52,10 +52,10 @@ public sealed class SqliteSavedReportStoreTests : SavedReportStoreCorpus, IDispo
 
         Assert.Equal(reports.Length, reports.Select(report => report.Id).Distinct().Count());
         Assert.All(reports, report => Assert.True(report.Id > 0));
-        Assert.Equal(reports.Length, (await store.ListAll()).Count);
+        Assert.Equal(reports.Length, (await store.ListAll(TestContext.Current.CancellationToken)).Count);
     }
 
-    public void Dispose() => _keepAlive.Dispose();
+    protected override Task CleanUp() => _keepAlive.DisposeAsync().AsTask();
 
     private static SavedReport Report(string title) => new()
     {

@@ -14,7 +14,7 @@ public sealed class OracleAdministratorStoreTests : AdministratorStoreCorpus
     protected override SqlAdministratorStore CreateStore()
     {
         var connectionString = ConnectionString;
-        Skip.If(
+        Assert.SkipWhen(
             string.IsNullOrWhiteSpace(connectionString),
             "set IR_TEST_ORACLE to run live Oracle administrator-store verification");
 

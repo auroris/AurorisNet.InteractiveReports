@@ -48,7 +48,7 @@ public sealed class StoreSchemaStatementsTests
         // The missing index gives the store's guarded DDL work to do, so a read-only connection really refuses it.
         await Run(file, "DROP INDEX IR_SAVED_REPORTS_DEFAULT_UX");
         var store = new SqlSavedReportStore(() => config, new Factory($"Data Source={file};Mode=ReadOnly;Pooling=False"));
-        Assert.Empty(await store.ListFamily("tasks"));
+        Assert.Empty(await store.ListFamily("tasks", TestContext.Current.CancellationToken));
     }
 
     [Fact]
@@ -58,7 +58,7 @@ public sealed class StoreSchemaStatementsTests
         var config = new AdministratorStoreConfig(Connection, ReportDialect.Sqlite, TableName: "IR_ADMINS");
         foreach (var sql in SqlAdministratorStore.SchemaStatements(config)) await Run(file, sql);
         var store = new SqlAdministratorStore(() => config, new Factory($"Data Source={file};Mode=ReadOnly;Pooling=False"));
-        Assert.Empty(await store.List());
+        Assert.Empty(await store.List(TestContext.Current.CancellationToken));
         Assert.Equal(config, store.Configuration);
     }
 
@@ -70,9 +70,9 @@ public sealed class StoreSchemaStatementsTests
         var config = new SavedReportStoreConfig(Connection, ReportDialect.Sqlite);
         var store = new SqlSavedReportStore(() => config, new Factory($"Data Source={file};Mode=ReadOnly;Pooling=False"));
         Assert.Equal(config, store.Configuration);
-        await Assert.ThrowsAnyAsync<DbException>(() => store.ListFamily("tasks"));
+        await Assert.ThrowsAnyAsync<DbException>(() => store.ListFamily("tasks", TestContext.Current.CancellationToken));
         foreach (var sql in SqlSavedReportStore.SchemaStatements(config)) await Run(file, sql);
-        Assert.Empty(await store.ListFamily("tasks"));
+        Assert.Empty(await store.ListFamily("tasks", TestContext.Current.CancellationToken));
     }
 
     private static async Task Run(string file, string sql)

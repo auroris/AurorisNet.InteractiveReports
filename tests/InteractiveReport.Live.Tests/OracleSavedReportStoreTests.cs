@@ -14,7 +14,7 @@ public sealed class OracleSavedReportStoreTests : SavedReportStoreCorpus
     protected override SqlSavedReportStore CreateStore()
     {
         var connectionString = ConnectionString;
-        Skip.If(
+        Assert.SkipWhen(
             string.IsNullOrWhiteSpace(connectionString),
             "set IR_TEST_ORACLE to run live Oracle saved-report verification");
 

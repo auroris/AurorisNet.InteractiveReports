@@ -65,7 +65,7 @@ public sealed class BoundRelationPlanDebugTests
             new DateTime(2026, 8, 29, 12, 0, 0, DateTimeKind.Utc),
             (_, _, _, _, _) => throw new InvalidOperationException("No Pivot expected."));
 
-        var table = await compiler.Compile("summary", default);
+        var table = await compiler.Compile("summary", TestContext.Current.CancellationToken);
 
         Assert.Equal(
             """

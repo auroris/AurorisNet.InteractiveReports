@@ -15,11 +15,11 @@ public sealed class SqlLoggingTests
     public async Task Submitted_sql_is_logged_at_debug_without_parameter_values()
     {
         await using var connection = new SqliteConnection("Data Source=:memory:");
-        await connection.OpenAsync();
+        await connection.OpenAsync(TestContext.Current.CancellationToken);
         await using (var setup = connection.CreateCommand())
         {
             setup.CommandText = "CREATE TABLE LOG_TEST (ID INTEGER, TENANT TEXT)";
-            await setup.ExecuteNonQueryAsync();
+            await setup.ExecuteNonQueryAsync(TestContext.Current.CancellationToken);
         }
 
         var definition = new ReportDefinition
@@ -32,7 +32,7 @@ public sealed class SqlLoggingTests
         var context = new Dictionary<string, object?> { ["tenant"] = "sensitive-tenant" };
 
         var debugLogger = new CapturingLogger<ReportExecutor>(LogLevel.Debug);
-        await SchemaDiscovery.Discover(connection, definition, context, logger: debugLogger);
+        await SchemaDiscovery.Discover(connection, definition, context, logger: debugLogger, ct: TestContext.Current.CancellationToken);
 
         var message = Assert.Single(debugLogger.Messages);
         Assert.Contains("Executing report SQL:", message);
@@ -41,7 +41,7 @@ public sealed class SqlLoggingTests
         Assert.DoesNotContain("sensitive-tenant", message);
 
         var informationLogger = new CapturingLogger<ReportExecutor>(LogLevel.Information);
-        await SchemaDiscovery.Discover(connection, definition, context, logger: informationLogger);
+        await SchemaDiscovery.Discover(connection, definition, context, logger: informationLogger, ct: TestContext.Current.CancellationToken);
         Assert.Empty(informationLogger.Messages);
     }
 
@@ -50,7 +50,7 @@ public sealed class SqlLoggingTests
     {
         var connectionString = $"Data Source=logging-{Guid.NewGuid():n};Mode=Memory;Cache=Shared";
         await using var keepAlive = new SqliteConnection(connectionString);
-        await keepAlive.OpenAsync();
+        await keepAlive.OpenAsync(TestContext.Current.CancellationToken);
         var connections = new ConnectionFactory(() => new SqliteConnection(connectionString));
 
         const string sensitiveTitle = "private-quarterly-plan";
@@ -68,7 +68,7 @@ public sealed class SqlLoggingTests
             Title = sensitiveTitle,
             Owner = sensitiveIdentity,
             StateJson = "{\"private\":true}",
-        });
+        }, TestContext.Current.CancellationToken);
 
         Assert.Contains(savedLogger.Messages, message => message.Contains("CREATE TABLE", StringComparison.Ordinal));
         Assert.Contains(savedLogger.Messages, message => message.Contains("INSERT", StringComparison.OrdinalIgnoreCase));
@@ -85,7 +85,7 @@ public sealed class SqlLoggingTests
             () => new AdministratorStoreConfig("logging", ReportDialect.Sqlite),
             connections,
             administratorLogger);
-        await administrators.Grant(sensitiveIdentity);
+        await administrators.Grant(sensitiveIdentity, TestContext.Current.CancellationToken);
 
         Assert.Contains(
             administratorLogger.Messages,
@@ -100,14 +100,14 @@ public sealed class SqlLoggingTests
     {
         var connectionString = $"Data Source=logging-level-{Guid.NewGuid():n};Mode=Memory;Cache=Shared";
         await using var keepAlive = new SqliteConnection(connectionString);
-        await keepAlive.OpenAsync();
+        await keepAlive.OpenAsync(TestContext.Current.CancellationToken);
         var logger = new CapturingLogger<SqlSavedReportStore>(LogLevel.Information);
         var store = new SqlSavedReportStore(
             () => new SavedReportStoreConfig("logging", ReportDialect.Sqlite),
             new ConnectionFactory(() => new SqliteConnection(connectionString)),
             logger);
 
-        await store.ListAll();
+        await store.ListAll(TestContext.Current.CancellationToken);
 
         Assert.Empty(logger.Messages);
     }

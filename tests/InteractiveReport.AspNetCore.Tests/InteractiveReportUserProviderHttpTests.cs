@@ -27,7 +27,7 @@ public sealed class InteractiveReportUserProviderHttpTests
             new InteractiveReportUser("Grace Hopper", "grace-id"),
         ];
 
-        using var response = await host.Client.SendAsync(Request("configured-admin"));
+        using var response = await host.Client.SendAsync(Request("configured-admin"), TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var result = await ReadJson(response);
@@ -52,8 +52,8 @@ public sealed class InteractiveReportUserProviderHttpTests
         await using var host = await Start(Directory.Provider);
         host.State.Users = [new InteractiveReportUser("Secret User", "secret-id")];
 
-        using var anonymous = await host.Client.SendAsync(Request(identity: null));
-        using var ordinary = await host.Client.SendAsync(Request("ordinary-user"));
+        using var anonymous = await host.Client.SendAsync(Request(identity: null), TestContext.Current.CancellationToken);
+        using var ordinary = await host.Client.SendAsync(Request("ordinary-user"), TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.Unauthorized, anonymous.StatusCode);
         Assert.Equal(HttpStatusCode.NotFound, ordinary.StatusCode);
@@ -64,18 +64,18 @@ public sealed class InteractiveReportUserProviderHttpTests
     public async Task Without_a_directory_the_engine_still_offers_the_identities_it_knows()
     {
         await using var host = await Start(Directory.None);
-        await host.Services.GetRequiredService<IAdministratorStore>().Grant("db-admin");
+        await host.Services.GetRequiredService<IAdministratorStore>().Grant("db-admin", TestContext.Current.CancellationToken);
         var saved = host.Services.GetRequiredService<ISavedReportStore>();
         await saved.Create(new SavedReport
         {
             Id = 0, ReportName = "orders", Title = "Owned", Owner = "report-owner", StateJson = "{}",
-        });
+        }, TestContext.Current.CancellationToken);
         await saved.Create(new SavedReport
         {
             Id = 0, ReportName = "orders", Title = "Also owned", Owner = "report-owner", StateJson = "{}",
-        });
+        }, TestContext.Current.CancellationToken);
 
-        using var response = await host.Client.SendAsync(Request("configured-admin"));
+        using var response = await host.Client.SendAsync(Request("configured-admin"), TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var result = await ReadJson(response);
@@ -92,12 +92,12 @@ public sealed class InteractiveReportUserProviderHttpTests
         await using var host = await Start(Directory.Provider);
 
         host.State.Users = null;
-        using var nullResponse = await host.Client.SendAsync(Request("configured-admin"));
+        using var nullResponse = await host.Client.SendAsync(Request("configured-admin"), TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, nullResponse.StatusCode);
         Assert.Equal(["configured-admin"], Users(await ReadJson(nullResponse)).Select(user => user.Value));
 
         host.State.Users = [];
-        using var emptyResponse = await host.Client.SendAsync(Request("configured-admin", search: "zzz"));
+        using var emptyResponse = await host.Client.SendAsync(Request("configured-admin", search: "zzz"), TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, emptyResponse.StatusCode);
         Assert.Empty(Users(await ReadJson(emptyResponse)));
     }
@@ -113,18 +113,18 @@ public sealed class InteractiveReportUserProviderHttpTests
             new InteractiveReportUser("Adam Smith", "smith-id"),
         ];
 
-        using var byDisplay = await host.Client.SendAsync(Request("configured-admin", search: "  ADA "));
+        using var byDisplay = await host.Client.SendAsync(Request("configured-admin", search: "  ADA "), TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, byDisplay.StatusCode);
         Assert.Equal(["ada-id", "smith-id"], Users(await ReadJson(byDisplay)).Select(user => user.Value));
         Assert.Equal("ADA", host.State.LastSearch);
 
-        using var byValue = await host.Client.SendAsync(Request("configured-admin", search: "GRACE-"));
+        using var byValue = await host.Client.SendAsync(Request("configured-admin", search: "GRACE-"), TestContext.Current.CancellationToken);
         Assert.Equal(["grace-id"], Users(await ReadJson(byValue)).Select(user => user.Value));
 
-        using var knownOnly = await host.Client.SendAsync(Request("configured-admin", search: "configured"));
+        using var knownOnly = await host.Client.SendAsync(Request("configured-admin", search: "configured"), TestContext.Current.CancellationToken);
         Assert.Equal(["configured-admin"], Users(await ReadJson(knownOnly)).Select(user => user.Value));
 
-        using var tooLong = await host.Client.SendAsync(Request("configured-admin", search: new string('x', 201)));
+        using var tooLong = await host.Client.SendAsync(Request("configured-admin", search: new string('x', 201)), TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.BadRequest, tooLong.StatusCode);
         Assert.Equal("IR-1405", (await ReadJson(tooLong)).GetProperty("code").GetString());
     }
@@ -138,7 +138,7 @@ public sealed class InteractiveReportUserProviderHttpTests
             .ToArray();
 
         // The directory fills the limit exactly: presented as truncated so the UI asks for a search.
-        using var filled = await host.Client.SendAsync(Request("configured-admin"));
+        using var filled = await host.Client.SendAsync(Request("configured-admin"), TestContext.Current.CancellationToken);
         var filledResult = await ReadJson(filled);
         Assert.Equal(3, host.State.LastLimit);
         Assert.Equal(["user-1", "user-2", "user-3"], Users(filledResult).Select(user => user.Value));
@@ -146,14 +146,14 @@ public sealed class InteractiveReportUserProviderHttpTests
 
         // Two directory entries plus the known administrator fit exactly: complete.
         host.State.Users = host.State.Users.Take(2).ToArray();
-        using var exact = await host.Client.SendAsync(Request("configured-admin"));
+        using var exact = await host.Client.SendAsync(Request("configured-admin"), TestContext.Current.CancellationToken);
         var exactResult = await ReadJson(exact);
         Assert.Equal(["user-1", "user-2", "configured-admin"], Users(exactResult).Select(user => user.Value));
         Assert.False(exactResult.GetProperty("truncated").GetBoolean());
 
         // Known identities beyond the limit are cut, and the cut is reported.
-        await host.Services.GetRequiredService<IAdministratorStore>().Grant("zed-admin");
-        using var overflow = await host.Client.SendAsync(Request("configured-admin"));
+        await host.Services.GetRequiredService<IAdministratorStore>().Grant("zed-admin", TestContext.Current.CancellationToken);
+        using var overflow = await host.Client.SendAsync(Request("configured-admin"), TestContext.Current.CancellationToken);
         var overflowResult = await ReadJson(overflow);
         Assert.Equal(3, Users(overflowResult).Count);
         Assert.True(overflowResult.GetProperty("truncated").GetBoolean());
@@ -165,26 +165,26 @@ public sealed class InteractiveReportUserProviderHttpTests
         await using var host = await Start(Directory.Provider, cacheSeconds: 300);
         host.State.Users = [new InteractiveReportUser("Ada Lovelace", "ada-id")];
 
-        using var first = await host.Client.SendAsync(Request("configured-admin"));
-        using var second = await host.Client.SendAsync(Request("configured-admin"));
+        using var first = await host.Client.SendAsync(Request("configured-admin"), TestContext.Current.CancellationToken);
+        using var second = await host.Client.SendAsync(Request("configured-admin"), TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, second.StatusCode);
         Assert.Equal(1, host.State.Calls);
         Assert.Equal(["ada-id", "configured-admin"], Users(await ReadJson(second)).Select(user => user.Value));
 
         // Identities the engine learns from storage are merged fresh even while the directory
         // answer is reused.
-        await host.Services.GetRequiredService<IAdministratorStore>().Grant("new-admin");
-        using var third = await host.Client.SendAsync(Request("configured-admin"));
+        await host.Services.GetRequiredService<IAdministratorStore>().Grant("new-admin", TestContext.Current.CancellationToken);
+        using var third = await host.Client.SendAsync(Request("configured-admin"), TestContext.Current.CancellationToken);
         Assert.Equal(1, host.State.Calls);
         Assert.Equal(["ada-id", "configured-admin", "new-admin"], Users(await ReadJson(third)).Select(user => user.Value));
 
-        using var searched = await host.Client.SendAsync(Request("configured-admin", search: "ada"));
+        using var searched = await host.Client.SendAsync(Request("configured-admin", search: "ada"), TestContext.Current.CancellationToken);
         Assert.Equal(2, host.State.Calls);
-        using var searchedAgain = await host.Client.SendAsync(Request("configured-admin", search: "ada"));
+        using var searchedAgain = await host.Client.SendAsync(Request("configured-admin", search: "ada"), TestContext.Current.CancellationToken);
         Assert.Equal(3, host.State.Calls);
 
         // Another administrator gets their own directory answer.
-        using var other = await host.Client.SendAsync(Request("new-admin"));
+        using var other = await host.Client.SendAsync(Request("new-admin"), TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, other.StatusCode);
         Assert.Equal(4, host.State.Calls);
         Assert.Equal("new-admin", host.State.Caller);
@@ -196,8 +196,8 @@ public sealed class InteractiveReportUserProviderHttpTests
         await using var host = await Start(Directory.Provider, cacheSeconds: 0);
         host.State.Users = [new InteractiveReportUser("Ada Lovelace", "ada-id")];
 
-        using var first = await host.Client.SendAsync(Request("configured-admin"));
-        using var second = await host.Client.SendAsync(Request("configured-admin"));
+        using var first = await host.Client.SendAsync(Request("configured-admin"), TestContext.Current.CancellationToken);
+        using var second = await host.Client.SendAsync(Request("configured-admin"), TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.OK, second.StatusCode);
         Assert.Equal(2, host.State.Calls);
@@ -216,7 +216,7 @@ public sealed class InteractiveReportUserProviderHttpTests
             new ClaimsIdentity([new Claim(ClaimTypes.NameIdentifier, "torvalds-id"), new Claim("preferred_username", "linus")]),
         ];
 
-        using var response = await host.Client.SendAsync(Request("configured-admin", search: "a"));
+        using var response = await host.Client.SendAsync(Request("configured-admin", search: "a"), TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         Assert.Equal("a", host.State.LastSearch);
@@ -242,16 +242,16 @@ public sealed class InteractiveReportUserProviderHttpTests
             new ClaimsIdentity([new Claim(ClaimTypes.NameIdentifier, "ada-id"), new Claim("email", "ada@example.test"), new Claim(ClaimTypes.Name, "Ada")]),
         ];
 
-        using var response = await host.Client.SendAsync(Request("configured-admin"));
+        using var response = await host.Client.SendAsync(Request("configured-admin"), TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         Assert.Contains(("Ada", "ada@example.test"), Users(await ReadJson(response)));
 
         // An identity without the configured claim is an integration mistake, not a silent omission.
         host.State.Identities = [new ClaimsIdentity([new Claim(ClaimTypes.NameIdentifier, "no-email")])];
-        using var broken = await host.Client.SendAsync(Request("configured-admin"));
+        using var broken = await host.Client.SendAsync(Request("configured-admin"), TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.InternalServerError, broken.StatusCode);
         Assert.Equal("IR-1202", (await ReadJson(broken)).GetProperty("code").GetString());
-        Assert.DoesNotContain("no-email", await broken.Content.ReadAsStringAsync());
+        Assert.DoesNotContain("no-email", await broken.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
     }
 
     [Fact]
@@ -264,7 +264,7 @@ public sealed class InteractiveReportUserProviderHttpTests
             new InteractiveReportUser("Second", " same-id "),
         ];
 
-        using var response = await host.Client.SendAsync(Request("configured-admin"));
+        using var response = await host.Client.SendAsync(Request("configured-admin"), TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.InternalServerError, response.StatusCode);
         var problem = await ReadJson(response);

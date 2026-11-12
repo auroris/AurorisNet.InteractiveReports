@@ -34,7 +34,7 @@ public sealed class DataSourceHttpTests : IAsyncLifetime
     private WebApplication? _app;
     private HttpClient _client = null!;
 
-    public async Task InitializeAsync()
+    public async ValueTask InitializeAsync()
     {
         _tempRoot = Directory.CreateTempSubdirectory("interactive-report-datasource-").FullName;
         _dataPath = Path.Combine(_tempRoot, "data.db");
@@ -118,7 +118,7 @@ public sealed class DataSourceHttpTests : IAsyncLifetime
         _client = new HttpClient { BaseAddress = new Uri(address) };
     }
 
-    public async Task DisposeAsync()
+    public async ValueTask DisposeAsync()
     {
         _client?.Dispose();
         if (_app is not null)
@@ -167,8 +167,7 @@ public sealed class DataSourceHttpTests : IAsyncLifetime
             schema.GetProperty("columns").EnumerateArray()
                 .Select(c => c.GetProperty("name").GetString()!).ToArray());
 
-        using var response = await _client.PostAsync(
-            $"/api/reports/{report}/query", JsonContent.Create(new { v = 3 }));
+        using var response = await _client.PostAsync($"/api/reports/{report}/query", JsonContent.Create(new { v = 3 }), TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var result = await ReadJson(response);
         Assert.Equal(2, result.GetProperty("rows").GetArrayLength());
@@ -177,15 +176,13 @@ public sealed class DataSourceHttpTests : IAsyncLifetime
     [Fact]
     public async Task Lov_posts_the_complete_current_document_and_returns_one_bounded_column()
     {
-        using var response = await _client.PostAsync(
-            "/api/reports/literal/lov",
-            JsonContent.Create(new
+        using var response = await _client.PostAsync("/api/reports/literal/lov", JsonContent.Create(new
             {
                 document = new { },
                 table = "definition",
                 column = "LABEL",
                 search = "fir",
-            }));
+            }), TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var result = await ReadJson(response);
@@ -200,9 +197,7 @@ public sealed class DataSourceHttpTests : IAsyncLifetime
     [Fact]
     public async Task Lov_rejects_a_request_without_the_current_document()
     {
-        using var response = await _client.PostAsync(
-            "/api/reports/literal/lov",
-            JsonContent.Create(new { table = "definition", column = "LABEL" }));
+        using var response = await _client.PostAsync("/api/reports/literal/lov", JsonContent.Create(new { table = "definition", column = "LABEL" }), TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
         var problem = await ReadJson(response);
@@ -215,32 +210,29 @@ public sealed class DataSourceHttpTests : IAsyncLifetime
     {
         var id = await ReportDocumentTestIds.Default(_app!.Services, "literal");
         var body = new { title = "Kept", state = new { v = 3 } };
-        using var created = await _client.PostAsync(
-            $"/api/reports/literal/saved", JsonContent.Create(body));
+        using var created = await _client.PostAsync($"/api/reports/literal/saved", JsonContent.Create(body), TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.Created, created.StatusCode);
 
         Assert.True(File.Exists(_savedPath), "the dataSource-backed store file was not created");
         await using var connection = new SqliteConnection($"Data Source={_savedPath};Pooling=False");
-        await connection.OpenAsync();
+        await connection.OpenAsync(TestContext.Current.CancellationToken);
         await using var command = connection.CreateCommand();
         command.CommandText = "SELECT COUNT(*) FROM IR_SAVED_REPORTS";
-        Assert.Equal(2L, await command.ExecuteScalarAsync());
+        Assert.Equal(2L, await command.ExecuteScalarAsync(TestContext.Current.CancellationToken));
     }
 
     [Fact]
     public async Task A_definition_broken_by_a_live_config_edit_returns_a_shaped_problem_document()
     {
         // Passes at startup and on a first request…
-        using var before = await _client.PostAsync(
-            "/api/reports/mutable/query", JsonContent.Create(new { v = 3 }));
+        using var before = await _client.PostAsync("/api/reports/mutable/query", JsonContent.Create(new { v = 3 }), TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, before.StatusCode);
 
         // …then the edit points it at a ConnectionStrings name that does not exist.
-        await File.WriteAllTextAsync(_mutableConfigPath, MutableConfig("GhostDb"));
+        await File.WriteAllTextAsync(_mutableConfigPath, MutableConfig("GhostDb"), TestContext.Current.CancellationToken);
         ((IConfigurationRoot)_app!.Services.GetRequiredService<IConfiguration>()).Reload();
 
-        using var after = await _client.PostAsync(
-            "/api/reports/mutable/query", JsonContent.Create(new { v = 3 }));
+        using var after = await _client.PostAsync("/api/reports/mutable/query", JsonContent.Create(new { v = 3 }), TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.InternalServerError, after.StatusCode);
         var problem = await ReadJson(after);
         Assert.Equal("IR-1202", problem.GetProperty("code").GetString());
@@ -249,31 +241,27 @@ public sealed class DataSourceHttpTests : IAsyncLifetime
         Assert.False(string.IsNullOrEmpty(problem.GetProperty("traceId").GetString()));
 
         // Restore for the other tests (fixture instances are per-test-class).
-        await File.WriteAllTextAsync(_mutableConfigPath, MutableConfig("MutableDb"));
+        await File.WriteAllTextAsync(_mutableConfigPath, MutableConfig("MutableDb"), TestContext.Current.CancellationToken);
         ((IConfigurationRoot)_app.Services.GetRequiredService<IConfiguration>()).Reload();
     }
 
     [Fact]
     public async Task Authorization_is_resolved_before_a_broken_definition_is_hydrated()
     {
-        using var before = await _client.PostAsync(
-            "/api/reports/mutable/query", JsonContent.Create(new { v = 3 }));
+        using var before = await _client.PostAsync("/api/reports/mutable/query", JsonContent.Create(new { v = 3 }), TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, before.StatusCode);
 
         // Both changes arrive in one reload. The report now names a policy that denies this
         // caller and its executable connection is invalid; the report-level gate must win before
         // connection resolution attempts to hydrate the definition.
-        await File.WriteAllTextAsync(
-            _mutableConfigPath,
-            MutableConfig("GhostDb", allowAnonymous: false, policy: "NeverAllowed"));
+        await File.WriteAllTextAsync(_mutableConfigPath, MutableConfig("GhostDb", allowAnonymous: false, policy: "NeverAllowed"), TestContext.Current.CancellationToken);
         ((IConfigurationRoot)_app!.Services.GetRequiredService<IConfiguration>()).Reload();
 
-        using var denied = await _client.PostAsync(
-            "/api/reports/mutable/query", JsonContent.Create(new { v = 3 }));
+        using var denied = await _client.PostAsync("/api/reports/mutable/query", JsonContent.Create(new { v = 3 }), TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.NotFound, denied.StatusCode);
         Assert.Equal("no-store", denied.Headers.CacheControl?.ToString());
 
-        await File.WriteAllTextAsync(_mutableConfigPath, MutableConfig("MutableDb"));
+        await File.WriteAllTextAsync(_mutableConfigPath, MutableConfig("MutableDb"), TestContext.Current.CancellationToken);
         ((IConfigurationRoot)_app.Services.GetRequiredService<IConfiguration>()).Reload();
     }
 
@@ -297,7 +285,7 @@ public sealed class DataSourceHttpTests : IAsyncLifetime
             .AddConnection("Opaque", _ => new DialectSniffTests.FakeConnection());
 
         await using var app = builder.Build();
-        var error = await Assert.ThrowsAsync<InvalidOperationException>(() => app.StartAsync());
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(() => app.StartAsync(TestContext.Current.CancellationToken));
         Assert.Contains("FakeConnection", error.Message);
         Assert.Contains("AddConnection(\"Opaque\", factory, ReportDialect.", error.Message);
     }

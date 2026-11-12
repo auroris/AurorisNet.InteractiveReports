@@ -42,8 +42,8 @@ public sealed class CanonicalComposableExecutionTests : IClassFixture<SqliteE2EF
         Assert.Equal(naturalSql.Sql, permutedSql.Sql);
         Assert.Equal(naturalSql.Bindings, permutedSql.Bindings);
 
-        var natural = await _executor.Query(Definition, GridDocument(permuted: false), NoParams);
-        var permuted = await _executor.Query(Definition, GridDocument(permuted: true), NoParams);
+        var natural = await _executor.Query(Definition, GridDocument(permuted: false), NoParams, TestContext.Current.CancellationToken);
+        var permuted = await _executor.Query(Definition, GridDocument(permuted: true), NoParams, TestContext.Current.CancellationToken);
 
         Assert.Equal(natural.TotalRows, permuted.TotalRows);
         Assert.Equal(
@@ -58,8 +58,8 @@ public sealed class CanonicalComposableExecutionTests : IClassFixture<SqliteE2EF
     [Fact]
     public async Task Pivot_runs_before_same_table_compute_and_filter_for_every_permutation()
     {
-        var natural = await _executor.Query(Definition, PivotDocument(permuted: false), NoParams);
-        var permuted = await _executor.Query(Definition, PivotDocument(permuted: true), NoParams);
+        var natural = await _executor.Query(Definition, PivotDocument(permuted: false), NoParams, TestContext.Current.CancellationToken);
+        var permuted = await _executor.Query(Definition, PivotDocument(permuted: true), NoParams, TestContext.Current.CancellationToken);
 
         Assert.Equal(natural.TotalRows, permuted.TotalRows);
         Assert.Equal(
@@ -78,7 +78,7 @@ public sealed class CanonicalComposableExecutionTests : IClassFixture<SqliteE2EF
         ]);
 
         var exception = await Assert.ThrowsAsync<ReportValidationException>(
-            () => _executor.Query(Definition, document, NoParams));
+            () => _executor.Query(Definition, document, NoParams, TestContext.Current.CancellationToken));
 
         Assert.Contains(exception.Errors, error =>
             error.Path == "tables.result.composables[0].kind"
@@ -102,7 +102,7 @@ public sealed class CanonicalComposableExecutionTests : IClassFixture<SqliteE2EF
         ]);
 
         var error = await Assert.ThrowsAsync<ReportValidationException>(
-            () => _executor.Query(Definition, document, NoParams));
+            () => _executor.Query(Definition, document, NoParams, TestContext.Current.CancellationToken));
 
         Assert.Contains(error.Errors, item =>
             item.Path == "tables.result.composables[0].computed[1].expr"
@@ -127,7 +127,7 @@ public sealed class CanonicalComposableExecutionTests : IClassFixture<SqliteE2EF
         ]);
 
         var exception = await Assert.ThrowsAsync<ReportValidationException>(
-            () => _executor.Query(Definition, document, NoParams));
+            () => _executor.Query(Definition, document, NoParams, TestContext.Current.CancellationToken));
 
         var aError = Assert.Single(
             exception.Errors,
@@ -168,7 +168,7 @@ public sealed class CanonicalComposableExecutionTests : IClassFixture<SqliteE2EF
         ]);
 
         var exception = await Assert.ThrowsAsync<ReportValidationException>(
-            () => _executor.Query(Definition, document, NoParams));
+            () => _executor.Query(Definition, document, NoParams, TestContext.Current.CancellationToken));
 
         var aError = Assert.Single(
             exception.Errors,
@@ -202,7 +202,7 @@ public sealed class CanonicalComposableExecutionTests : IClassFixture<SqliteE2EF
         ]);
 
         var exception = await Assert.ThrowsAsync<ReportValidationException>(
-            () => _executor.Query(Definition, document, NoParams));
+            () => _executor.Query(Definition, document, NoParams, TestContext.Current.CancellationToken));
 
         var budget = Assert.Single(
             exception.Errors,
@@ -229,7 +229,7 @@ public sealed class CanonicalComposableExecutionTests : IClassFixture<SqliteE2EF
         ]);
 
         var error = await Assert.ThrowsAsync<ReportValidationException>(
-            () => _executor.Query(Definition, document, NoParams));
+            () => _executor.Query(Definition, document, NoParams, TestContext.Current.CancellationToken));
 
         Assert.Contains(error.Errors, item =>
             item.Path == "tables.result.composables[0].computed[0].id"
@@ -250,7 +250,7 @@ public sealed class CanonicalComposableExecutionTests : IClassFixture<SqliteE2EF
         ]);
         document.Search = "Acme";
 
-        var result = await _executor.Query(Definition, document, NoParams);
+        var result = await _executor.Query(Definition, document, NoParams, TestContext.Current.CancellationToken);
 
         Assert.Equal(0, result.TotalRows);
         Assert.Empty(result.Rows);
@@ -262,7 +262,7 @@ public sealed class CanonicalComposableExecutionTests : IClassFixture<SqliteE2EF
         var document = Document([]);
         document.Search = "Acme";
         var definition = Definition;
-        var schema = await _executor.GetSchema(definition, NoParams);
+        var schema = await _executor.GetSchema(definition, NoParams, TestContext.Current.CancellationToken);
         var compiler = new ComposableTableCompiler(
             definition,
             document,
@@ -271,7 +271,7 @@ public sealed class CanonicalComposableExecutionTests : IClassFixture<SqliteE2EF
             (_, _, _, _, _) => Task.FromException<List<PivotGroup>>(
                 new InvalidOperationException("Pivot discovery is not expected in this test.")));
 
-        var compiled = await compiler.Compile("result", default);
+        var compiled = await compiler.Compile("result", TestContext.Current.CancellationToken);
         var completed = compiler.CompleteForTarget(compiled);
 
         Assert.Same(compiled.Export.Bound, completed.Export.Bound);

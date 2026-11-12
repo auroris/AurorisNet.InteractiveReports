@@ -17,7 +17,7 @@ public sealed class PersistenceHttpTests
 
         await using (var connection = new SqliteConnection(connectionString))
         {
-            await connection.OpenAsync();
+            await connection.OpenAsync(TestContext.Current.CancellationToken);
             await using var command = connection.CreateCommand();
             command.CommandText = """
                 CREATE TABLE IR_PERSISTENCE_TEST (
@@ -28,7 +28,7 @@ public sealed class PersistenceHttpTests
                 INSERT INTO IR_PERSISTENCE_TEST (ID, LABEL, AMOUNT)
                 VALUES (1, 'first', 12.5), (2, 'second', 25.0);
                 """;
-            await command.ExecuteNonQueryAsync();
+            await command.ExecuteNonQueryAsync(TestContext.Current.CancellationToken);
         }
 
         try

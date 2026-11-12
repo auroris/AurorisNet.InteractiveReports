@@ -82,7 +82,7 @@ public sealed class ConfigurationReportDefinitionStoreTests
             new OptionsMonitorStub(options),
             new SchemaCache(), TestRegistry());
 
-        var snapshot = await store.Find("orders");
+        var snapshot = await store.Find("orders", TestContext.Current.CancellationToken);
 
         Assert.NotNull(snapshot);
         Assert.Equal("", configured.Name);
@@ -114,7 +114,7 @@ public sealed class ConfigurationReportDefinitionStoreTests
             new OptionsMonitorStub(options),
             new SchemaCache(), TestRegistry());
 
-        var snapshot = await store.Find("orders");
+        var snapshot = await store.Find("orders", TestContext.Current.CancellationToken);
 
         Assert.NotNull(snapshot);
         Assert.NotSame(configured.ColumnLabels, snapshot.ColumnLabels);
@@ -140,7 +140,7 @@ public sealed class ConfigurationReportDefinitionStoreTests
             new SchemaCache(), TestRegistry());
 
         var error = await Assert.ThrowsAsync<InvalidOperationException>(
-            async () => await store.Find("orders"));
+            async () => await store.Find("orders", TestContext.Current.CancellationToken));
 
         Assert.Contains(expected, error.Message);
     }
@@ -165,7 +165,7 @@ public sealed class ConfigurationReportDefinitionStoreTests
             new SchemaCache(), TestRegistry());
 
         var error = await Assert.ThrowsAsync<InvalidOperationException>(
-            async () => await store.Find("orders"));
+            async () => await store.Find("orders", TestContext.Current.CancellationToken));
 
         Assert.Contains("duplicate column", error.Message);
     }
@@ -188,7 +188,7 @@ public sealed class ConfigurationReportDefinitionStoreTests
             new SchemaCache(), TestRegistry());
 
         var error = await Assert.ThrowsAsync<InvalidOperationException>(
-            async () => await store.Find("orders"));
+            async () => await store.Find("orders", TestContext.Current.CancellationToken));
 
         Assert.Contains(expected, error.Message);
     }
@@ -209,7 +209,7 @@ public sealed class ConfigurationReportDefinitionStoreTests
             new SchemaCache(), TestRegistry());
 
         var error = await Assert.ThrowsAsync<InvalidOperationException>(
-            async () => await store.Find("orders"));
+            async () => await store.Find("orders", TestContext.Current.CancellationToken));
 
         Assert.Contains("duplicate entry 'download'", error.Message);
     }
@@ -229,7 +229,7 @@ public sealed class ConfigurationReportDefinitionStoreTests
             new OptionsMonitorStub(options),
             new SchemaCache(), TestRegistry());
 
-        var snapshot = await store.Find("orders");
+        var snapshot = await store.Find("orders", TestContext.Current.CancellationToken);
 
         Assert.NotNull(snapshot);
         Assert.True(ReportFeatures.IsEnabled(snapshot, ReportFeatures.Search));
@@ -254,7 +254,7 @@ public sealed class ConfigurationReportDefinitionStoreTests
             new OptionsMonitorStub(options),
             new SchemaCache(), TestRegistry());
 
-        var snapshot = await store.Find("orders");
+        var snapshot = await store.Find("orders", TestContext.Current.CancellationToken);
 
         Assert.NotNull(snapshot);
         Assert.Null(snapshot.Features);
@@ -277,7 +277,7 @@ public sealed class ConfigurationReportDefinitionStoreTests
             new SchemaCache(), TestRegistry());
 
         var error = await Assert.ThrowsAsync<InvalidOperationException>(
-            async () => await store.Find("orders"));
+            async () => await store.Find("orders", TestContext.Current.CancellationToken));
 
         Assert.Contains("maxChartPoints", error.Message);
     }
@@ -292,7 +292,7 @@ public sealed class ConfigurationReportDefinitionStoreTests
 
         // The internal test constructor wires no synchronizer: the built-in is
         // absent rather than synthesized against a store nobody prepared.
-        Assert.Null(await store.Find("__saved-reports"));
+        Assert.Null(await store.Find("__saved-reports", TestContext.Current.CancellationToken));
 
         options.Reports["__saved-reports"] = new ReportDefinition
         {
@@ -301,7 +301,7 @@ public sealed class ConfigurationReportDefinitionStoreTests
             Sql = "select 1",
         };
         var reserved = await Assert.ThrowsAsync<InvalidOperationException>(
-            async () => await store.Find("__saved-reports"));
+            async () => await store.Find("__saved-reports", TestContext.Current.CancellationToken));
         Assert.Contains("reserved", reserved.Message);
     }
 
@@ -319,7 +319,7 @@ public sealed class ConfigurationReportDefinitionStoreTests
             new OptionsMonitorStub(options),
             new SchemaCache(), TestRegistry());
         var reserved = await Assert.ThrowsAsync<InvalidOperationException>(
-            async () => await store.Find("__mine"));
+            async () => await store.Find("__mine", TestContext.Current.CancellationToken));
         Assert.Contains("reserved for built-in", reserved.Message);
 
         var contradictory = new InteractiveReportOptions();
@@ -334,7 +334,7 @@ public sealed class ConfigurationReportDefinitionStoreTests
             new OptionsMonitorStub(contradictory),
             new SchemaCache(), TestRegistry());
         var conflict = await Assert.ThrowsAsync<InvalidOperationException>(
-            async () => await conflicted.Find("orders"));
+            async () => await conflicted.Find("orders", TestContext.Current.CancellationToken));
         Assert.Contains("policy cannot be combined with allowAnonymous", conflict.Message);
     }
 
@@ -477,7 +477,7 @@ public sealed class ConfigurationReportDefinitionStoreTests
         using var store = StoreFor(def);
 
         var error = await Assert.ThrowsAsync<InvalidOperationException>(
-            async () => await store.Find("orders"));
+            async () => await store.Find("orders", TestContext.Current.CancellationToken));
 
         Assert.Contains(expected, error.Message);
     }
@@ -490,7 +490,7 @@ public sealed class ConfigurationReportDefinitionStoreTests
         using var store = StoreFor(def);
 
         var error = await Assert.ThrowsAsync<InvalidOperationException>(
-            async () => await store.Find("orders"));
+            async () => await store.Find("orders", TestContext.Current.CancellationToken));
 
         Assert.Contains("at most 2048 characters", error.Message);
     }
@@ -509,7 +509,7 @@ public sealed class ConfigurationReportDefinitionStoreTests
         using var store = StoreFor(def);
 
         var error = await Assert.ThrowsAsync<InvalidOperationException>(
-            async () => await store.Find("orders"));
+            async () => await store.Find("orders", TestContext.Current.CancellationToken));
 
         Assert.Contains(expected, error.Message);
     }
@@ -528,7 +528,7 @@ public sealed class ConfigurationReportDefinitionStoreTests
         using var store = StoreFor(def);
 
         var error = await Assert.ThrowsAsync<InvalidOperationException>(
-            async () => await store.Find("orders"));
+            async () => await store.Find("orders", TestContext.Current.CancellationToken));
 
         Assert.Contains(expected, error.Message);
     }
@@ -541,7 +541,7 @@ public sealed class ConfigurationReportDefinitionStoreTests
         using var store = StoreFor(def);
 
         var error = await Assert.ThrowsAsync<InvalidOperationException>(
-            async () => await store.Find("orders"));
+            async () => await store.Find("orders", TestContext.Current.CancellationToken));
 
         Assert.Contains("at most 2048 characters", error.Message);
     }
@@ -565,7 +565,7 @@ public sealed class ConfigurationReportDefinitionStoreTests
             def.CreateLink = link;
             using var store = StoreFor(def);
 
-            var snapshot = await store.Find("orders");
+            var snapshot = await store.Find("orders", TestContext.Current.CancellationToken);
 
             Assert.Equal(link.Url, snapshot!.CreateLink!.Url);
             Assert.Equal(link.Mode, snapshot.CreateLink.Mode);
@@ -587,7 +587,7 @@ public sealed class ConfigurationReportDefinitionStoreTests
             def.EditLink = new ReportEditLink { UrlTemplate = template, Label = "Edit order", Target = "_BLANK" };
             using var store = StoreFor(def);
 
-            var snapshot = await store.Find("orders");
+            var snapshot = await store.Find("orders", TestContext.Current.CancellationToken);
 
             Assert.Equal(template, snapshot!.EditLink!.UrlTemplate);
         }
@@ -603,7 +603,7 @@ public sealed class ConfigurationReportDefinitionStoreTests
         using var store = StoreFor(def);
 
         var error = await Assert.ThrowsAsync<InvalidOperationException>(
-            async () => await store.Find("orders"));
+            async () => await store.Find("orders", TestContext.Current.CancellationToken));
 
         Assert.Contains(expected, error.Message);
     }
@@ -620,7 +620,7 @@ public sealed class ConfigurationReportDefinitionStoreTests
         using var store = StoreFor(def);
 
         var error = await Assert.ThrowsAsync<InvalidOperationException>(
-            async () => await store.Find("orders"));
+            async () => await store.Find("orders", TestContext.Current.CancellationToken));
 
         Assert.Contains("duplicate column", error.Message);
     }
@@ -633,7 +633,7 @@ public sealed class ConfigurationReportDefinitionStoreTests
         using var store = StoreFor(def);
 
         var error = await Assert.ThrowsAsync<InvalidOperationException>(
-            async () => await store.Find("orders"));
+            async () => await store.Find("orders", TestContext.Current.CancellationToken));
 
         Assert.Contains("helpText must not be blank", error.Message);
     }
@@ -647,7 +647,7 @@ public sealed class ConfigurationReportDefinitionStoreTests
         using var store = StoreFor(def);
 
         var error = await Assert.ThrowsAsync<InvalidOperationException>(
-            async () => await store.Find("orders"));
+            async () => await store.Find("orders", TestContext.Current.CancellationToken));
 
         Assert.Contains("configure it in one place", error.Message);
     }
@@ -678,7 +678,7 @@ public sealed class ConfigurationReportDefinitionStoreTests
         };
         using var sorting = StoreFor(sortingDef);
         var sortError = await Assert.ThrowsAsync<InvalidOperationException>(
-            async () => await sorting.Find("orders"));
+            async () => await sorting.Find("orders", TestContext.Current.CancellationToken));
         Assert.Contains("is not sortable", sortError.Message);
 
         var breakingDef = OrdersDefinition();
@@ -700,7 +700,7 @@ public sealed class ConfigurationReportDefinitionStoreTests
         };
         using var breaking = StoreFor(breakingDef);
         var breakError = await Assert.ThrowsAsync<InvalidOperationException>(
-            async () => await breaking.Find("orders"));
+            async () => await breaking.Find("orders", TestContext.Current.CancellationToken));
         Assert.Contains("control breaks imply sorting", breakError.Message);
     }
 
@@ -735,7 +735,7 @@ public sealed class ConfigurationReportDefinitionStoreTests
         };
         using var store = StoreFor(def);
 
-        var snapshot = await store.Find("orders");
+        var snapshot = await store.Find("orders", TestContext.Current.CancellationToken);
 
         // Snapshot() serializes through IrJson — a property this drops is silently
         // lost on every Find, so the round-trip is the load-bearing assertion.
@@ -766,12 +766,12 @@ public sealed class ConfigurationReportDefinitionStoreTests
     {
         var defaultDefinition = OrdersDefinition();
         using var defaultStore = StoreFor(defaultDefinition);
-        Assert.Equal(ReportConsistency.None, (await defaultStore.Find("orders"))!.Consistency);
+        Assert.Equal(ReportConsistency.None, (await defaultStore.Find("orders", TestContext.Current.CancellationToken))!.Consistency);
 
         var snapshotDefinition = OrdersDefinition();
         snapshotDefinition.Consistency = ReportConsistency.Snapshot;
         using var snapshotStore = StoreFor(snapshotDefinition);
-        Assert.Equal(ReportConsistency.Snapshot, (await snapshotStore.Find("orders"))!.Consistency);
+        Assert.Equal(ReportConsistency.Snapshot, (await snapshotStore.Find("orders", TestContext.Current.CancellationToken))!.Consistency);
     }
 
     [Fact]
@@ -818,11 +818,11 @@ public sealed class ConfigurationReportDefinitionStoreTests
             DataSource = "Data Source=:memory:",
             Sql = "select 1 as ID",
         });
-        var bothError = await Assert.ThrowsAsync<InvalidOperationException>(async () => await both.Find("orders"));
+        var bothError = await Assert.ThrowsAsync<InvalidOperationException>(async () => await both.Find("orders", TestContext.Current.CancellationToken));
         Assert.Contains("not both", bothError.Message);
 
         using var neither = StoreWith(new ReportDefinition { Sql = "select 1 as ID" });
-        var neitherError = await Assert.ThrowsAsync<InvalidOperationException>(async () => await neither.Find("orders"));
+        var neitherError = await Assert.ThrowsAsync<InvalidOperationException>(async () => await neither.Find("orders", TestContext.Current.CancellationToken));
         Assert.Contains("a data source is required", neitherError.Message);
         Assert.Contains("dataSource", neitherError.Message);
     }
@@ -837,7 +837,7 @@ public sealed class ConfigurationReportDefinitionStoreTests
             Sql = "select 1 as ID",
         });
         var providerError = await Assert.ThrowsAsync<InvalidOperationException>(
-            async () => await withProvider.Find("orders"));
+            async () => await withProvider.Find("orders", TestContext.Current.CancellationToken));
         Assert.Contains("provider applies to dataSource", providerError.Message);
 
         using var reserved = StoreWith(new ReportDefinition
@@ -846,7 +846,7 @@ public sealed class ConfigurationReportDefinitionStoreTests
             Sql = "select 1 as ID",
         });
         var reservedError = await Assert.ThrowsAsync<InvalidOperationException>(
-            async () => await reserved.Find("orders"));
+            async () => await reserved.Find("orders", TestContext.Current.CancellationToken));
         Assert.Contains("'__ir:' are reserved", reservedError.Message);
     }
 
@@ -855,7 +855,7 @@ public sealed class ConfigurationReportDefinitionStoreTests
     {
         // No dialect configured — the new normal.
         using var derived = StoreWith(new ReportDefinition { Connection = "db", Sql = "select 1 as ID" });
-        var snapshot = await derived.Find("orders");
+        var snapshot = await derived.Find("orders", TestContext.Current.CancellationToken);
         Assert.Equal(ReportDialect.Sqlite, snapshot!.Dialect);
         Assert.Equal(ReportDialect.Sqlite, snapshot.GetEffectiveDialect());
 
@@ -867,7 +867,7 @@ public sealed class ConfigurationReportDefinitionStoreTests
             Dialect = ReportDialect.Oracle,
             Sql = "select 1 as ID",
         });
-        var corrected = await leftover.Find("orders");
+        var corrected = await leftover.Find("orders", TestContext.Current.CancellationToken);
         Assert.Equal(ReportDialect.Sqlite, corrected!.Dialect);
     }
 
@@ -880,7 +880,7 @@ public sealed class ConfigurationReportDefinitionStoreTests
             Provider = "sqlite",
             Sql = "select 1 as ID",
         });
-        var snapshot = await literal.Find("orders");
+        var snapshot = await literal.Find("orders", TestContext.Current.CancellationToken);
         Assert.StartsWith("__ir:ds:", snapshot!.Connection);
         Assert.Equal(ReportDialect.Sqlite, snapshot.Dialect);
 
@@ -888,7 +888,7 @@ public sealed class ConfigurationReportDefinitionStoreTests
             new ReportDefinition { DataSource = "AppDb", Sql = "select 1 as ID" },
             ("ConnectionStrings:AppDb", "Data Source=:memory:"),
             ("ConnectionStrings:AppDb_ProviderName", "Microsoft.Data.Sqlite"));
-        var resolved = await named.Find("orders");
+        var resolved = await named.Find("orders", TestContext.Current.CancellationToken);
         Assert.StartsWith("__ir:ds:", resolved!.Connection);
         Assert.Equal(ReportDialect.Sqlite, resolved.Dialect);
         Assert.Equal("AppDb", resolved.DataSource);
@@ -909,7 +909,7 @@ public sealed class ConfigurationReportDefinitionStoreTests
             new OptionsMonitorStub(options),
             new SchemaCache(), TestRegistry());
 
-        var snapshot = await store.Find("oRdErS");
+        var snapshot = await store.Find("oRdErS", TestContext.Current.CancellationToken);
 
         // The configured key becomes REPORT_NAME in saved-report rows and the filter
         // that finds them again: alternate casing stays accepted at the boundary but
@@ -936,7 +936,7 @@ public sealed class ConfigurationReportDefinitionStoreTests
             new SchemaCache(), TestRegistry());
 
         var error = await Assert.ThrowsAsync<InvalidOperationException>(
-            async () => await store.Find(name));
+            async () => await store.Find(name, TestContext.Current.CancellationToken));
 
         Assert.Contains("reserved names are ui, saved, whoami, admin", error.Message);
     }
@@ -978,9 +978,9 @@ public sealed class ConfigurationReportDefinitionStoreTests
             new OptionsMonitorStub(options),
             new SchemaCache(), TestRegistry());
 
-        Assert.NotNull(await store.Find("good"));
+        Assert.NotNull(await store.Find("good", TestContext.Current.CancellationToken));
         var error = await Assert.ThrowsAsync<InvalidOperationException>(
-            async () => await store.Find("bad"));
+            async () => await store.Find("bad", TestContext.Current.CancellationToken));
         Assert.Contains("must not end with ORDER BY", error.Message);
     }
 

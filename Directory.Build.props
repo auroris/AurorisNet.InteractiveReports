@@ -18,6 +18,9 @@
     <IncludeSymbols>true</IncludeSymbols>
     <SymbolPackageFormat>snupkg</SymbolPackageFormat>
 
+    <!-- Use configured NuGet feeds instead of the SDK's optional library-packs directory. -->
+    <DisableImplicitLibraryPacksFolder>true</DisableImplicitLibraryPacksFolder>
+
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <!-- Comment readability outranks XML-doc pedantry: no exhaustive coverage (CS1591/CS1573),
          and prose like "comparison = <> < <=" stays literal rather than entity-escaped

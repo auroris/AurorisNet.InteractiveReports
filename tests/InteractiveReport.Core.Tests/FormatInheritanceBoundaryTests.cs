@@ -40,8 +40,8 @@ public sealed class FormatInheritanceBoundaryTests : IClassFixture<SqliteE2EFixt
                 ],
             });
 
-        var result = await _executor.Query(Definition, document, NoParams);
-        var export = await _executor.Download(Definition, document, NoParams);
+        var result = await _executor.Query(Definition, document, NoParams, TestContext.Current.CancellationToken);
+        var export = await _executor.Download(Definition, document, NoParams, ct: TestContext.Current.CancellationToken);
         var plan = await Compile(document);
 
         Assert.All(result.Rows, row => Assert.Equal(["AMOUNT"], row.Keys));
@@ -88,7 +88,7 @@ public sealed class FormatInheritanceBoundaryTests : IClassFixture<SqliteE2EFixt
                 ],
             });
 
-        var result = await _executor.Query(Definition, document, NoParams);
+        var result = await _executor.Query(Definition, document, NoParams, TestContext.Current.CancellationToken);
         var plan = await Compile(document);
 
         Assert.Equal("AMOUNT", Assert.Single(result.Columns).FormatSource);
@@ -145,8 +145,8 @@ public sealed class FormatInheritanceBoundaryTests : IClassFixture<SqliteE2EFixt
                 ],
             });
 
-        var chart = await _executor.Query(Definition, chartDocument, NoParams);
-        var pivot = await _executor.Query(Definition, pivotDocument, NoParams);
+        var chart = await _executor.Query(Definition, chartDocument, NoParams, TestContext.Current.CancellationToken);
+        var pivot = await _executor.Query(Definition, pivotDocument, NoParams, TestContext.Current.CancellationToken);
 
         Assert.Equal("AMOUNT", chart.Columns[1].FormatSource);
         Assert.All(pivot.Columns.Skip(1), column => Assert.Equal("AMOUNT", column.FormatSource));
@@ -184,7 +184,7 @@ public sealed class FormatInheritanceBoundaryTests : IClassFixture<SqliteE2EFixt
                 ],
             });
 
-        var result = await _executor.Query(Definition, document, NoParams);
+        var result = await _executor.Query(Definition, document, NoParams, TestContext.Current.CancellationToken);
         var plan = await Compile(document);
 
         Assert.Null(result.Columns.Single(column => column.Name == "ir1").FormatSource);
@@ -197,8 +197,8 @@ public sealed class FormatInheritanceBoundaryTests : IClassFixture<SqliteE2EFixt
     {
         var document = Document(activeTable: "parent");
 
-        var result = await _executor.Query(Definition, document, NoParams);
-        var export = await _executor.Download(Definition, document, NoParams);
+        var result = await _executor.Query(Definition, document, NoParams, TestContext.Current.CancellationToken);
+        var export = await _executor.Download(Definition, document, NoParams, ct: TestContext.Current.CancellationToken);
         var plan = await Compile(document);
 
         Assert.All(result.Rows, row => Assert.Equal(["AMOUNT", "NOTES"], row.Keys));
@@ -324,7 +324,7 @@ public sealed class FormatInheritanceBoundaryTests : IClassFixture<SqliteE2EFixt
             },
         };
 
-        var export = await _executor.Download(Definition, document, NoParams);
+        var export = await _executor.Download(Definition, document, NoParams, ct: TestContext.Current.CancellationToken);
 
         Assert.All(export.Rows, row =>
         {
@@ -412,7 +412,7 @@ public sealed class FormatInheritanceBoundaryTests : IClassFixture<SqliteE2EFixt
             },
         };
 
-        var result = await _executor.Query(Definition, document, NoParams);
+        var result = await _executor.Query(Definition, document, NoParams, TestContext.Current.CancellationToken);
         var schema = result.Document!.Tables!["second"].Schema!;
 
         Assert.Equal("ir1", schema.Single(column => column.Name == "ir2").FormatSource);

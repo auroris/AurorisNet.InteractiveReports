@@ -30,7 +30,7 @@ public sealed class SavedReportsListingHttpTests : IAsyncLifetime
     private HttpClient _client = null!;
     private long _ordersId;
 
-    public async Task InitializeAsync()
+    public async ValueTask InitializeAsync()
     {
         _tempRoot = Directory.CreateTempSubdirectory("interactive-report-listing-").FullName;
         var documentDirectory = Path.Combine(_tempRoot, "ReportDocuments");
@@ -106,7 +106,7 @@ public sealed class SavedReportsListingHttpTests : IAsyncLifetime
         _ordersId = await ReportDocumentTestIds.Default(_app.Services, "orders");
     }
 
-    public async Task DisposeAsync()
+    public async ValueTask DisposeAsync()
     {
         _client?.Dispose();
         if (_app is not null)
@@ -129,7 +129,7 @@ public sealed class SavedReportsListingHttpTests : IAsyncLifetime
             HttpMethod.Post,
             $"/api/reports/orders/saved",
             owner,
-            new { title = "Owner cased", isGlobal = false, state = new { v = 3 } }));
+            new { title = "Owner cased", isGlobal = false, state = new { v = 3 } }), TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.Created, save.StatusCode);
 
         Assert.Contains(await Titles(owner), title => title == "Owner cased");
@@ -163,29 +163,25 @@ public sealed class SavedReportsListingHttpTests : IAsyncLifetime
     [Fact]
     public async Task Listing_is_administrators_only_with_non_disclosure()
     {
-        using var anonymous = await _client.SendAsync(
-            Request(HttpMethod.Get,
+        using var anonymous = await _client.SendAsync(Request(HttpMethod.Get,
                 $"/api/reports/{SavedReportsListingDefinition.Name}/schema",
-                identity: null));
+                identity: null), TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.Unauthorized, anonymous.StatusCode);
 
-        using var nonAdmin = await _client.SendAsync(
-            Request(HttpMethod.Get,
+        using var nonAdmin = await _client.SendAsync(Request(HttpMethod.Get,
                 $"/api/reports/{SavedReportsListingDefinition.Name}/schema",
-                User));
+                User), TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.NotFound, nonAdmin.StatusCode);
 
-        using var nonAdminQuery = await _client.SendAsync(
-            Request(HttpMethod.Post,
+        using var nonAdminQuery = await _client.SendAsync(Request(HttpMethod.Post,
                 $"/api/reports/{SavedReportsListingDefinition.Name}/query",
                 User,
-                new { v = 3 }));
+                new { v = 3 }), TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.NotFound, nonAdminQuery.StatusCode);
 
-        using var admin = await _client.SendAsync(
-            Request(HttpMethod.Get,
+        using var admin = await _client.SendAsync(Request(HttpMethod.Get,
                 $"/api/reports/{SavedReportsListingDefinition.Name}/schema",
-                Admin));
+                Admin), TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, admin.StatusCode);
         var schema = await ReadJson(admin);
         Assert.Equal("Saved Reports", schema.GetProperty("title").GetString());
@@ -203,10 +199,9 @@ public sealed class SavedReportsListingHttpTests : IAsyncLifetime
     {
         // First-ever request on a fresh content root: the saved-report table does not
         // exist yet — resolution must sync (and thereby create) it before discovery.
-        using var schemaResponse = await _client.SendAsync(
-            Request(HttpMethod.Get,
+        using var schemaResponse = await _client.SendAsync(Request(HttpMethod.Get,
                 $"/api/reports/{SavedReportsListingDefinition.Name}/schema",
-                Admin));
+                Admin), TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, schemaResponse.StatusCode);
         var state = (await ReadJson(schemaResponse)).GetProperty("defaultState");
 
@@ -232,7 +227,7 @@ public sealed class SavedReportsListingHttpTests : IAsyncLifetime
 
         using var save = await _client.SendAsync(Request(
             HttpMethod.Post, $"/api/reports/orders/saved", Admin,
-            new { title = "Mine", isGlobal = true, state = new { v = 3 } }));
+            new { title = "Mine", isGlobal = true, state = new { v = 3 } }), TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.Created, save.StatusCode);
         var savedId = (await ReadJson(save)).GetProperty("id").GetInt64();
 
@@ -250,7 +245,7 @@ public sealed class SavedReportsListingHttpTests : IAsyncLifetime
 
         // The wrapper's toggleGlobal contract: PUT with the id the action row carried.
         using var unpublish = await _client.SendAsync(Request(
-            HttpMethod.Put, $"/api/reports/{savedId}", Admin, new { isGlobal = false }));
+            HttpMethod.Put, $"/api/reports/{savedId}", Admin, new { isGlobal = false }), TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, unpublish.StatusCode);
 
         var third = await Query(state);
@@ -260,7 +255,7 @@ public sealed class SavedReportsListingHttpTests : IAsyncLifetime
         Assert.Equal("Publish", republished.GetProperty("ACTION_PUBLISH").GetString());
 
         using var makeDefault = await _client.SendAsync(Request(
-            HttpMethod.Put, $"/api/reports/{savedId}", Admin, new { isDefault = true }));
+            HttpMethod.Put, $"/api/reports/{savedId}", Admin, new { isDefault = true }), TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, makeDefault.StatusCode);
         var fourth = await Query(state);
         var selectedDefault = fourth.GetProperty("rows").EnumerateArray()
@@ -270,11 +265,11 @@ public sealed class SavedReportsListingHttpTests : IAsyncLifetime
         Assert.Equal(JsonValueKind.Null, selectedDefault.GetProperty("ACTION_DEFAULT").ValueKind);
 
         using var mutateConfigured = await _client.SendAsync(Request(
-            HttpMethod.Put, $"/api/reports/{configuredId}", Admin, new { title = "Takeover" }));
+            HttpMethod.Put, $"/api/reports/{configuredId}", Admin, new { title = "Takeover" }), TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.Forbidden, mutateConfigured.StatusCode);
 
         using var selectConfigured = await _client.SendAsync(Request(
-            HttpMethod.Put, $"/api/reports/{configuredId}", Admin, new { isDefault = true }));
+            HttpMethod.Put, $"/api/reports/{configuredId}", Admin, new { isDefault = true }), TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.Forbidden, selectConfigured.StatusCode);
     }
 
@@ -283,16 +278,16 @@ public sealed class SavedReportsListingHttpTests : IAsyncLifetime
     {
         using var save = await _client.SendAsync(Request(
             HttpMethod.Post, $"/api/reports/orders/saved", Admin,
-            new { title = "Executive", state = new { v = 3 } }));
+            new { title = "Executive", state = new { v = 3 } }), TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.Created, save.StatusCode);
         var id = (await ReadJson(save)).GetProperty("id").GetInt64();
 
         using var makeDefault = await _client.SendAsync(Request(
-            HttpMethod.Put, $"/api/reports/{id}", Admin, new { isDefault = true }));
+            HttpMethod.Put, $"/api/reports/{id}", Admin, new { isDefault = true }), TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, makeDefault.StatusCode);
 
         using var visibleResponse = await _client.SendAsync(Request(
-            HttpMethod.Get, "/api/reports/orders", User));
+            HttpMethod.Get, "/api/reports/orders", User), TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, visibleResponse.StatusCode);
         var visible = await ReadJson(visibleResponse);
         Assert.Contains(visible.EnumerateArray(), report =>
@@ -301,18 +296,18 @@ public sealed class SavedReportsListingHttpTests : IAsyncLifetime
             && report.GetProperty("isGlobal").GetBoolean());
 
         using var denied = await _client.SendAsync(Request(
-            HttpMethod.Put, $"/api/reports/{id}", User, new { isDefault = false }));
+            HttpMethod.Put, $"/api/reports/{id}", User, new { isDefault = false }), TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.NotFound, denied.StatusCode);
 
         using var unset = await _client.SendAsync(Request(
-            HttpMethod.Put, $"/api/reports/{id}", Admin, new { isDefault = false }));
+            HttpMethod.Put, $"/api/reports/{id}", Admin, new { isDefault = false }), TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.BadRequest, unset.StatusCode);
 
         using var restoreOriginal = await _client.SendAsync(Request(
-            HttpMethod.Put, $"/api/reports/{_ordersId}", Admin, new { isDefault = true }));
+            HttpMethod.Put, $"/api/reports/{_ordersId}", Admin, new { isDefault = true }), TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, restoreOriginal.StatusCode);
         using var afterResponse = await _client.SendAsync(Request(
-            HttpMethod.Get, "/api/reports/orders", User));
+            HttpMethod.Get, "/api/reports/orders", User), TestContext.Current.CancellationToken);
         var after = await ReadJson(afterResponse);
         Assert.Contains(after.EnumerateArray(), report =>
             report.GetProperty("id").GetInt64() == id
@@ -325,25 +320,25 @@ public sealed class SavedReportsListingHttpTests : IAsyncLifetime
     {
         using var save = await _client.SendAsync(Request(
             HttpMethod.Post, $"/api/reports/orders/saved", User,
-            new { title = "Owned", state = new { v = 3 } }));
+            new { title = "Owned", state = new { v = 3 } }), TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.Created, save.StatusCode);
         var id = (await ReadJson(save)).GetProperty("id").GetInt64();
 
         using var publish = await _client.SendAsync(Request(
             HttpMethod.Put, $"/api/reports/{id}", Admin,
-            new { isDefault = true }));
+            new { isDefault = true }), TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, publish.StatusCode);
 
         using var update = await _client.SendAsync(Request(
             HttpMethod.Put, $"/api/reports/{id}", User,
-            new { title = "Owned Updated", state = new { v = 3 } }));
+            new { title = "Owned Updated", state = new { v = 3 } }), TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, update.StatusCode);
         var updated = await ReadJson(update);
         Assert.True(updated.GetProperty("isGlobal").GetBoolean());
         Assert.True(updated.GetProperty("isDefault").GetBoolean());
 
         using var delete = await _client.SendAsync(Request(
-            HttpMethod.Delete, $"/api/reports/{id}", User));
+            HttpMethod.Delete, $"/api/reports/{id}", User), TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.NoContent, delete.StatusCode);
     }
 
@@ -351,7 +346,7 @@ public sealed class SavedReportsListingHttpTests : IAsyncLifetime
     public async Task Invalid_stored_default_returns_a_transient_default_without_changing_storage()
     {
         var store = _app!.Services.GetRequiredService<InteractiveReport.Core.SavedReports.ISavedReportStore>();
-        var current = await store.Get(_ordersId);
+        var current = await store.Get(_ordersId, TestContext.Current.CancellationToken);
         Assert.NotNull(current);
         Assert.True(current.IsDefault);
         Assert.Null(current.SourceFile);
@@ -363,10 +358,10 @@ public sealed class SavedReportsListingHttpTests : IAsyncLifetime
         {
             StateJson = "{not valid json",
         };
-        Assert.True(await store.Update(invalid, current));
+        Assert.True(await store.Update(invalid, current, TestContext.Current.CancellationToken));
 
         using var response = await _client.SendAsync(Request(
-            HttpMethod.Get, $"/api/reports/orders/{_ordersId}", Admin));
+            HttpMethod.Get, $"/api/reports/orders/{_ordersId}", Admin), TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var loaded = await ReadJson(response);
         Assert.Equal(JsonValueKind.Null, loaded.GetProperty("summary").ValueKind);
@@ -375,12 +370,12 @@ public sealed class SavedReportsListingHttpTests : IAsyncLifetime
         Assert.False(string.IsNullOrWhiteSpace(activeTable));
         Assert.True(state.GetProperty("tables").TryGetProperty(activeTable!, out _));
 
-        Assert.Equal(invalid, await store.Get(_ordersId));
+        Assert.Equal(invalid, await store.Get(_ordersId, TestContext.Current.CancellationToken));
         using var export = await _client.SendAsync(Request(
-            HttpMethod.Get, $"/api/reports/admin/saved/{_ordersId}/document", Admin));
+            HttpMethod.Get, $"/api/reports/admin/saved/{_ordersId}/document", Admin), TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.BadRequest, export.StatusCode);
         Assert.Equal(InteractiveReportErrorCodes.MalformedReportState, (await ReadJson(export)).GetProperty("code").GetString());
-        Assert.Equal(invalid, await store.Get(_ordersId));
+        Assert.Equal(invalid, await store.Get(_ordersId, TestContext.Current.CancellationToken));
     }
 
     [Fact]
@@ -391,33 +386,33 @@ public sealed class SavedReportsListingHttpTests : IAsyncLifetime
 
         using var firstPrivate = await _client.SendAsync(Request(
             HttpMethod.Post, $"/api/reports/orders/saved", User,
-            new { title, state = new { v = 3 } }));
+            new { title, state = new { v = 3 } }), TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.Created, firstPrivate.StatusCode);
         var firstId = (await ReadJson(firstPrivate)).GetProperty("id").GetInt64();
 
         using var secondPrivate = await _client.SendAsync(Request(
             HttpMethod.Post, $"/api/reports/orders/saved", otherUser,
-            new { title = title.ToUpperInvariant(), state = new { v = 3 } }));
+            new { title = title.ToUpperInvariant(), state = new { v = 3 } }), TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.Created, secondPrivate.StatusCode);
 
         using var publishLater = await _client.SendAsync(Request(
             HttpMethod.Post, $"/api/reports/orders/saved", Admin,
-            new { title = title.ToLowerInvariant(), isGlobal = true, state = new { v = 3 } }));
+            new { title = title.ToLowerInvariant(), isGlobal = true, state = new { v = 3 } }), TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.Created, publishLater.StatusCode);
         var publicId = (await ReadJson(publishLater)).GetProperty("id").GetInt64();
 
         using var unchangedPrivateUpdate = await _client.SendAsync(Request(
             HttpMethod.Put, $"/api/reports/{firstId}", User,
-            new { title = title.ToUpperInvariant(), state = new { v = 3, search = "updated" } }));
+            new { title = title.ToUpperInvariant(), state = new { v = 3, search = "updated" } }), TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, unchangedPrivateUpdate.StatusCode);
 
         using var duplicatePrivate = await _client.SendAsync(Request(
             HttpMethod.Post, $"/api/reports/orders/saved", User,
-            new { title, state = new { v = 3 } }));
+            new { title, state = new { v = 3 } }), TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.Conflict, duplicatePrivate.StatusCode);
 
         using var visibleResponse = await _client.SendAsync(Request(
-            HttpMethod.Get, "/api/reports/orders", User));
+            HttpMethod.Get, "/api/reports/orders", User), TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, visibleResponse.StatusCode);
         var visible = await ReadJson(visibleResponse);
         var matches = visible.EnumerateArray()
@@ -436,26 +431,26 @@ public sealed class SavedReportsListingHttpTests : IAsyncLifetime
     {
         using var save = await _client.SendAsync(Request(
             HttpMethod.Post, $"/api/reports/orders/saved", User,
-            new { title = "Client copy", state = new { v = 3, search = "first" } }));
+            new { title = "Client copy", state = new { v = 3, search = "first" } }), TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.Created, save.StatusCode);
         var id = (await ReadJson(save)).GetProperty("id").GetInt64();
 
         using var retrieve = await _client.SendAsync(Request(
-            HttpMethod.Get, $"/api/reports/orders/{id}", User));
+            HttpMethod.Get, $"/api/reports/orders/{id}", User), TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, retrieve.StatusCode);
         var clientCopy = (await ReadJson(retrieve)).GetProperty("result").GetProperty("document").Clone();
 
         using var reassign = await _client.SendAsync(Request(
             HttpMethod.Put, $"/api/reports/{id}", Admin,
-            new { owner = "listing-new-owner" }));
+            new { owner = "listing-new-owner" }), TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, reassign.StatusCode);
 
         using var hiddenOriginal = await _client.SendAsync(Request(
-            HttpMethod.Get, $"/api/reports/orders/{id}", User));
+            HttpMethod.Get, $"/api/reports/orders/{id}", User), TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.NotFound, hiddenOriginal.StatusCode);
 
         using var query = await _client.SendAsync(Request(
-            HttpMethod.Post, "/api/reports/orders/query", User, clientCopy));
+            HttpMethod.Post, "/api/reports/orders/query", User, clientCopy), TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, query.StatusCode);
         var result = await ReadJson(query);
         Assert.Equal("first", result.GetProperty("document").GetProperty("search").GetString());
@@ -464,19 +459,18 @@ public sealed class SavedReportsListingHttpTests : IAsyncLifetime
     [Fact]
     public async Task Listing_exports_action_labels_as_plain_csv()
     {
-        using var schemaResponse = await _client.SendAsync(
-            Request(HttpMethod.Get,
+        using var schemaResponse = await _client.SendAsync(Request(HttpMethod.Get,
                 $"/api/reports/{SavedReportsListingDefinition.Name}/schema",
-                Admin));
+                Admin), TestContext.Current.CancellationToken);
         var state = (await ReadJson(schemaResponse)).GetProperty("defaultState");
 
         using var export = await _client.SendAsync(Request(
             HttpMethod.Post,
             $"/api/download/{SavedReportsListingDefinition.Name}/csv",
             Admin,
-            state));
+            state), TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, export.StatusCode);
-        var csv = await export.Content.ReadAsStringAsync();
+        var csv = await export.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
 
         var line = csv.Split('\n').Select(l => l.TrimEnd('\r'))
             .Single(l => l.Contains("Regional View"));

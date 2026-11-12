@@ -17,7 +17,7 @@ public sealed class Oracle11gAdministratorStoreTests : AdministratorStoreCorpus
     protected override SqlAdministratorStore CreateStore()
     {
         var connectionString = ConnectionString;
-        Skip.If(
+        Assert.SkipWhen(
             string.IsNullOrWhiteSpace(connectionString),
             "set IR_TEST_ORACLE to run live Oracle 11g-mode administrator-store verification");
 

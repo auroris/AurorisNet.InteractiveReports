@@ -14,7 +14,7 @@ public sealed class SqlServerSavedReportStoreTests : SavedReportStoreCorpus
     protected override SqlSavedReportStore CreateStore()
     {
         var connectionString = ConnectionString;
-        Skip.If(
+        Assert.SkipWhen(
             string.IsNullOrWhiteSpace(connectionString),
             "set IR_TEST_SQLSERVER to run live SQL Server saved-report verification");
 

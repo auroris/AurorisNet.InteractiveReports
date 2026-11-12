@@ -36,7 +36,7 @@ public sealed class PortableExpressionConformanceTests : IClassFixture<SqliteE2E
             Computed = [new ComputedColumn { Id = "ir1", Expr = "ORDER_ID / 2" }],
             Sorts = [new SortRule { Col = "ORDER_ID" }],
             Columns = ["ORDER_ID", "ir1"],
-        }), NoParams);
+        }), NoParams, TestContext.Current.CancellationToken);
 
         Assert.Equal(0.5m, Number(grid.Rows[0]["ir1"]));
 
@@ -50,7 +50,7 @@ public sealed class PortableExpressionConformanceTests : IClassFixture<SqliteE2E
                     Sorts = [new SortRule { Col = "STATUS" }],
                     Columns = ["STATUS", "ir2"],
                 }),
-        ]), NoParams);
+        ]), NoParams, TestContext.Current.CancellationToken);
 
         var chart = ChartStage(shape =>
         {
@@ -68,7 +68,7 @@ public sealed class PortableExpressionConformanceTests : IClassFixture<SqliteE2E
             new TableComposable { Kind = "sort", Sorts = [new SortRule { Col = "STATUS" }] },
             new TableComposable { Kind = "select", Columns = ["STATUS", "ir2"] },
         ]);
-        var chartResult = await _executor.Query(Definition, Doc(tail: [chart]), NoParams);
+        var chartResult = await _executor.Query(Definition, Doc(tail: [chart]), NoParams, TestContext.Current.CancellationToken);
 
         Assert.Equal(
             NumericByKey(group.Rows, "STATUS", "ir2"),
@@ -93,7 +93,7 @@ public sealed class PortableExpressionConformanceTests : IClassFixture<SqliteE2E
                     ],
                     Columns = ["CUSTOMER", "ir2"],
                 }),
-        ]), NoParams);
+        ]), NoParams, TestContext.Current.CancellationToken);
 
         Assert.Equal(0.5m, Number(pivot.Rows.Single(row => Equals(row["CUSTOMER"], "Globex"))["ir2"]));
     }
@@ -131,7 +131,7 @@ public sealed class PortableExpressionConformanceTests : IClassFixture<SqliteE2E
                         ],
                         Columns = ["CUSTOMER", "ir1", "ir2"],
                     }),
-            ]), NoParams);
+            ]), NoParams, TestContext.Current.CancellationToken);
 
         Assert.Equal(9, result.Rows.Count);
         Assert.Single(result.Rows.Select(row => row["ir2"]).Distinct());
@@ -151,7 +151,7 @@ public sealed class PortableExpressionConformanceTests : IClassFixture<SqliteE2E
             Filters = [Filter("CUSTOMER >= 'Globex'")],
             Sorts = [new SortRule { Col = "CUSTOMER" }],
             Columns = ["CUSTOMER"],
-        }), NoParams);
+        }), NoParams, TestContext.Current.CancellationToken);
 
         var chart = ChartStage(shape =>
         {
@@ -165,7 +165,7 @@ public sealed class PortableExpressionConformanceTests : IClassFixture<SqliteE2E
             new TableComposable { Kind = "sort", Sorts = [new SortRule { Col = "CUSTOMER" }] },
             new TableComposable { Kind = "select", Columns = ["CUSTOMER"] },
         ]);
-        var shaped = await _executor.Query(Definition, Doc(tail: [chart]), NoParams);
+        var shaped = await _executor.Query(Definition, Doc(tail: [chart]), NoParams, TestContext.Current.CancellationToken);
 
         Assert.Equal(
             grid.Rows.Select(row => row["CUSTOMER"]),

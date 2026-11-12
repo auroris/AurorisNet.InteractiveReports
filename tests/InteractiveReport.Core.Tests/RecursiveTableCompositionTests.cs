@@ -53,10 +53,7 @@ public sealed class RecursiveTableCompositionTests : IClassFixture<SqliteE2EFixt
                 composables);
         }
 
-        var result = await _executor.Query(
-            Definition,
-            Document("t29", tables),
-            NoParams);
+        var result = await _executor.Query(Definition, Document("t29", tables), NoParams, TestContext.Current.CancellationToken);
 
         Assert.Equal(10, result.TotalRows);
         Assert.Equal(10, result.Rows.Count);
@@ -80,7 +77,7 @@ public sealed class RecursiveTableCompositionTests : IClassFixture<SqliteE2EFixt
                     Group(["STATUS"], [Metric("ir2", "ir1", AggregateFn.Sum)])),
             });
 
-        var result = await _executor.Query(Definition, document, NoParams);
+        var result = await _executor.Query(Definition, document, NoParams, TestContext.Current.CancellationToken);
 
         Assert.Equal(4, result.TotalRows);
         Assert.Equal(["STATUS", "__count", "ir2"], result.Columns.Select(column => column.Name));
@@ -108,7 +105,7 @@ public sealed class RecursiveTableCompositionTests : IClassFixture<SqliteE2EFixt
                     Group(["STATUS"], [Metric("ir1", "AMOUNT", AggregateFn.Sum)])),
             });
 
-        var result = await _executor.Query(Definition, document, NoParams);
+        var result = await _executor.Query(Definition, document, NoParams, TestContext.Current.CancellationToken);
 
         var row = Assert.Single(result.Rows);
         Assert.Equal("SHIPPED", row["STATUS"]);
@@ -137,7 +134,7 @@ public sealed class RecursiveTableCompositionTests : IClassFixture<SqliteE2EFixt
                     }),
             });
 
-        var result = await _executor.Query(Definition, document, NoParams);
+        var result = await _executor.Query(Definition, document, NoParams, TestContext.Current.CancellationToken);
 
         Assert.Equal(4, result.TotalRows);
         Assert.Equal(["STATUS", "ir1"], result.Columns.Select(column => column.Name));
@@ -168,7 +165,7 @@ public sealed class RecursiveTableCompositionTests : IClassFixture<SqliteE2EFixt
                         [Metric("ir2", ShippedPivotCell, AggregateFn.Sum)])),
             });
 
-        var result = await _executor.Query(Definition, document, NoParams);
+        var result = await _executor.Query(Definition, document, NoParams, TestContext.Current.CancellationToken);
 
         Assert.Equal(["CUSTOMER", "__count", "ir2"], result.Columns.Select(column => column.Name));
         var acme = result.Rows.Single(row => Equals(row["CUSTOMER"], "Acme Corp"));
@@ -184,7 +181,7 @@ public sealed class RecursiveTableCompositionTests : IClassFixture<SqliteE2EFixt
                 index == 0 ? "definition" : $"t{index - 1}");
 
         var exception = await Assert.ThrowsAsync<ReportValidationException>(() =>
-            _executor.Query(Definition, Document("t64", tables), NoParams));
+            _executor.Query(Definition, Document("t64", tables), NoParams, TestContext.Current.CancellationToken));
 
         var error = Assert.Single(exception.Errors);
         Assert.Equal("tables", error.Path);
@@ -203,7 +200,7 @@ public sealed class RecursiveTableCompositionTests : IClassFixture<SqliteE2EFixt
             });
 
         var exception = await Assert.ThrowsAsync<ReportValidationException>(() =>
-            _executor.Query(Definition, document, NoParams));
+            _executor.Query(Definition, document, NoParams, TestContext.Current.CancellationToken));
 
         Assert.Contains(
             exception.Errors,
@@ -259,7 +256,7 @@ public sealed class RecursiveTableCompositionTests : IClassFixture<SqliteE2EFixt
                     }),
             });
 
-        var result = await _executor.Query(Definition, document, NoParams);
+        var result = await _executor.Query(Definition, document, NoParams, TestContext.Current.CancellationToken);
 
         Assert.Equal(
             ["ORDER_ID", "CUSTOMER", "STATUS", "AMOUNT", "NOTES"],
@@ -291,7 +288,7 @@ public sealed class RecursiveTableCompositionTests : IClassFixture<SqliteE2EFixt
                     new TableComposable { Kind = "select", Columns = ["__count"] }),
             });
 
-        var result = await _executor.Query(definition, document, NoParams);
+        var result = await _executor.Query(definition, document, NoParams, TestContext.Current.CancellationToken);
 
         Assert.Equal(["__count"], result.Columns.Select(column => column.Name));
         Assert.All(result.Rows, row =>

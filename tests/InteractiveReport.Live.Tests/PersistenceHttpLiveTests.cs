@@ -18,7 +18,7 @@ public sealed class PersistenceHttpLiveTests
         ReportDialect.Postgres,
     };
 
-    [SkippableTheory]
+    [Theory]
     [MemberData(nameof(Dialects))]
     public async Task Synthetic_default_document_roundtrips_through_both_explicit_persistence_targets(
         ReportDialect dialect)

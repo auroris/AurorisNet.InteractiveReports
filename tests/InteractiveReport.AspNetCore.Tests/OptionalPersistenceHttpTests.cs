@@ -24,68 +24,61 @@ public sealed class OptionalPersistenceHttpTests
         var connectionString = $"Data Source={dataPath};Pooling=False";
         await using (var connection = new SqliteConnection(connectionString))
         {
-            await connection.OpenAsync();
+            await connection.OpenAsync(TestContext.Current.CancellationToken);
             await using var command = connection.CreateCommand();
             command.CommandText = "CREATE TABLE ITEMS (ID INTEGER PRIMARY KEY, LABEL TEXT NOT NULL);"
                 + "INSERT INTO ITEMS VALUES (1, 'one');";
-            await command.ExecuteNonQueryAsync();
+            await command.ExecuteNonQueryAsync(TestContext.Current.CancellationToken);
         }
 
         try
         {
             await using var host = await Start(tempRoot, connectionString);
 
-            using var schema = await host.Client.GetAsync("/api/reports/items/schema");
+            using var schema = await host.Client.GetAsync("/api/reports/items/schema", TestContext.Current.CancellationToken);
             Assert.Equal(HttpStatusCode.OK, schema.StatusCode);
 
-            using var initial = await host.Client.GetAsync("/api/reports/items/default");
+            using var initial = await host.Client.GetAsync("/api/reports/items/default", TestContext.Current.CancellationToken);
             Assert.Equal(HttpStatusCode.OK, initial.StatusCode);
             var defaultDocument = await ReadJson(initial);
             Assert.Equal(JsonValueKind.Null, defaultDocument.GetProperty("summary").ValueKind);
             Assert.Single(defaultDocument.GetProperty("result").GetProperty("rows").EnumerateArray());
 
-            using var query = await host.Client.PostAsJsonAsync(
-                "/api/reports/items/query",
-                new { v = 3 });
+            using var query = await host.Client.PostAsJsonAsync("/api/reports/items/query", new { v = 3 }, cancellationToken: TestContext.Current.CancellationToken);
             Assert.Equal(HttpStatusCode.OK, query.StatusCode);
 
-            using var lov = await host.Client.PostAsJsonAsync(
-                "/api/reports/items/lov",
-                new
+            using var lov = await host.Client.PostAsJsonAsync("/api/reports/items/lov", new
                 {
                     document = new { v = 3 },
                     table = "definition",
                     column = "LABEL",
-                });
+                }, cancellationToken: TestContext.Current.CancellationToken);
             Assert.Equal(HttpStatusCode.OK, lov.StatusCode);
 
-            using var export = await host.Client.PostAsJsonAsync(
-                "/api/download/items/csv",
-                new { v = 3 });
+            using var export = await host.Client.PostAsJsonAsync("/api/download/items/csv", new { v = 3 }, cancellationToken: TestContext.Current.CancellationToken);
             Assert.Equal(HttpStatusCode.OK, export.StatusCode);
 
-            using var catalogue = await host.Client.GetAsync("/api/reports");
+            using var catalogue = await host.Client.GetAsync("/api/reports", TestContext.Current.CancellationToken);
             Assert.Equal(HttpStatusCode.OK, catalogue.StatusCode);
             // The viewer lists the family on every load: without storage the answer is an empty
             // list, not a storage failure, so a report-only host comes up without a warning.
-            using var family = await host.Client.GetAsync("/api/reports/items");
+            using var family = await host.Client.GetAsync("/api/reports/items", TestContext.Current.CancellationToken);
             Assert.Equal(HttpStatusCode.OK, family.StatusCode);
             Assert.Empty((await ReadJson(family)).EnumerateArray());
 
-            using var whoami = await host.Client.GetAsync("/api/reports/whoami");
+            using var whoami = await host.Client.GetAsync("/api/reports/whoami", TestContext.Current.CancellationToken);
             Assert.Equal(HttpStatusCode.OK, whoami.StatusCode);
             var identity = await ReadJson(whoami);
             Assert.True(identity.GetProperty("isAdministrator").GetBoolean());
             Assert.Equal("configuration", identity.GetProperty("administratorSource").GetString());
             Assert.False(identity.GetProperty("administratorsManagedByApplication").GetBoolean());
 
-            using var administration = await host.Client.GetAsync(
-                "/api/reports/admin/administrators");
+            using var administration = await host.Client.GetAsync("/api/reports/admin/administrators", TestContext.Current.CancellationToken);
             await AssertStorageFailure(administration);
 
             // The account lookup never touches storage that is not configured: it offers only
             // what configuration and the caller supply.
-            using var directory = await host.Client.GetAsync("/api/reports/admin/users");
+            using var directory = await host.Client.GetAsync("/api/reports/admin/users", TestContext.Current.CancellationToken);
             Assert.Equal(HttpStatusCode.OK, directory.StatusCode);
             var lookup = await ReadJson(directory);
             Assert.False(lookup.GetProperty("truncated").GetBoolean());
@@ -115,11 +108,11 @@ public sealed class OptionalPersistenceHttpTests
         var connectionString = $"Data Source={dataPath};Pooling=False";
         await using (var connection = new SqliteConnection(connectionString))
         {
-            await connection.OpenAsync();
+            await connection.OpenAsync(TestContext.Current.CancellationToken);
             await using var command = connection.CreateCommand();
             command.CommandText = "CREATE TABLE ITEMS (ID INTEGER PRIMARY KEY, LABEL TEXT NOT NULL);"
                 + "INSERT INTO ITEMS VALUES (1, 'one');";
-            await command.ExecuteNonQueryAsync();
+            await command.ExecuteNonQueryAsync(TestContext.Current.CancellationToken);
         }
 
         var inaccessibleDirectory = Path.Combine(tempRoot, "does-not-exist");
@@ -130,13 +123,12 @@ public sealed class OptionalPersistenceHttpTests
 
             // Ordinary report access never touches storage: the catalogue answers even though
             // the saved-report store is unreachable. Listing a family does need the store.
-            using var catalogue = await host.Client.GetAsync("/api/reports");
+            using var catalogue = await host.Client.GetAsync("/api/reports", TestContext.Current.CancellationToken);
             Assert.Equal(HttpStatusCode.OK, catalogue.StatusCode);
-            using var family = await host.Client.GetAsync("/api/reports/items");
+            using var family = await host.Client.GetAsync("/api/reports/items", TestContext.Current.CancellationToken);
             await AssertStorageFailure(family);
 
-            using var administration = await host.Client.GetAsync(
-                "/api/reports/admin/administrators");
+            using var administration = await host.Client.GetAsync("/api/reports/admin/administrators", TestContext.Current.CancellationToken);
             await AssertStorageFailure(administration);
 
             Assert.False(Directory.Exists(inaccessibleDirectory));

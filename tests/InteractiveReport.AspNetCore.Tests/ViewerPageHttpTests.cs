@@ -26,7 +26,7 @@ public sealed class ViewerPageHttpTests : IAsyncLifetime
     private HttpClient _client = null!;
     private long _securedId;
 
-    public async Task InitializeAsync()
+    public async ValueTask InitializeAsync()
     {
         _tempRoot = Directory.CreateTempSubdirectory("interactive-report-pages-").FullName;
         var dataPath = Path.Combine(_tempRoot, "pages-data.db");
@@ -69,7 +69,7 @@ public sealed class ViewerPageHttpTests : IAsyncLifetime
         _securedId = await ReportDocumentTestIds.Default(_app.Services, "secured");
     }
 
-    public async Task DisposeAsync()
+    public async ValueTask DisposeAsync()
     {
         _client?.Dispose();
         if (_app is not null)
@@ -85,30 +85,29 @@ public sealed class ViewerPageHttpTests : IAsyncLifetime
     [Fact]
     public async Task The_viewer_shell_is_anonymous_while_the_data_endpoints_stay_gated()
     {
-        using var page = await _client.GetAsync("/api/reports/secured/view");
+        using var page = await _client.GetAsync("/api/reports/secured/view", TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, page.StatusCode);
         Assert.Equal("text/html", page.Content.Headers.ContentType?.MediaType);
         Assert.Equal("no-store", page.Headers.CacheControl?.ToString());
-        var html = await page.Content.ReadAsStringAsync();
+        var html = await page.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
         Assert.Contains("src=\"/api/reports/ui/ir.js\"", html);
         Assert.Contains("<interactive-report report=\"secured\">", html);
         Assert.DoesNotContain("api-base", html);
 
-        using var schema = await _client.GetAsync("/api/reports/secured/schema");
+        using var schema = await _client.GetAsync("/api/reports/secured/schema", TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.Unauthorized, schema.StatusCode);
     }
 
     [Fact]
     public async Task The_shell_renders_identically_for_unknown_names_and_encodes_injected_values()
     {
-        using var unknown = await _client.GetAsync("/api/reports/unknown/view");
+        using var unknown = await _client.GetAsync("/api/reports/unknown/view", TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, unknown.StatusCode);
-        Assert.Contains("report=\"unknown\"", await unknown.Content.ReadAsStringAsync());
+        Assert.Contains("report=\"unknown\"", await unknown.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
 
-        using var hostile = await _client.GetAsync(
-            "/api/reports/unknown/view?saved-report=%22%3E%3Cimg%3E");
+        using var hostile = await _client.GetAsync("/api/reports/unknown/view?saved-report=%22%3E%3Cimg%3E", TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, hostile.StatusCode);
-        var html = await hostile.Content.ReadAsStringAsync();
+        var html = await hostile.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
         Assert.DoesNotContain("<script>", html.Replace("<script type=\"module\"", ""));
         Assert.DoesNotContain("\"><img>", html);
         Assert.Contains("saved-report=", html);
@@ -117,9 +116,9 @@ public sealed class ViewerPageHttpTests : IAsyncLifetime
     [Fact]
     public async Task The_admin_shell_serves_the_admin_bundle()
     {
-        using var page = await _client.GetAsync("/api/reports/admin");
+        using var page = await _client.GetAsync("/api/reports/admin", TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, page.StatusCode);
-        var html = await page.Content.ReadAsStringAsync();
+        var html = await page.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
         Assert.Contains("src=\"/api/reports/ui/ir-admin.js\"", html);
         Assert.Contains("<interactive-report-admin>", html);
     }
@@ -130,8 +129,8 @@ public sealed class ViewerPageHttpTests : IAsyncLifetime
         using var request = new HttpRequestMessage(HttpMethod.Get, "/api/reports/secured/view");
         request.Headers.AcceptLanguage.Add(new StringWithQualityHeaderValue("en", 0.5));
         request.Headers.AcceptLanguage.Add(new StringWithQualityHeaderValue("fr-CA", 0.9));
-        using var page = await _client.SendAsync(request);
-        var html = await page.Content.ReadAsStringAsync();
+        using var page = await _client.SendAsync(request, TestContext.Current.CancellationToken);
+        var html = await page.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.OK, page.StatusCode);
         Assert.Contains("<html lang=\"fr-CA\">", html);
@@ -139,8 +138,8 @@ public sealed class ViewerPageHttpTests : IAsyncLifetime
 
         using var adminRequest = new HttpRequestMessage(HttpMethod.Get, "/api/reports/admin");
         adminRequest.Headers.AcceptLanguage.Add(new StringWithQualityHeaderValue("fr"));
-        using var admin = await _client.SendAsync(adminRequest);
-        var adminHtml = await admin.Content.ReadAsStringAsync();
+        using var admin = await _client.SendAsync(adminRequest, TestContext.Current.CancellationToken);
+        var adminHtml = await admin.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
         Assert.Contains("<html lang=\"fr-CA\">", adminHtml);
         Assert.Contains("<title>Administration des rapports enregistrés</title>", adminHtml);
     }
@@ -163,15 +162,15 @@ public sealed class ViewerPageHttpTests : IAsyncLifetime
 
         await using var app = builder.Build();
         app.MapInteractiveReportJson("/api/reports");
-        await app.StartAsync();
+        await app.StartAsync(TestContext.Current.CancellationToken);
         var address = app.Services.GetRequiredService<IServer>()
             .Features.Get<IServerAddressesFeature>()!.Addresses.Single();
         using var client = new HttpClient { BaseAddress = new Uri(address) };
 
-        using var view = await client.GetAsync("/api/reports/1/view");
+        using var view = await client.GetAsync("/api/reports/1/view", TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.NotFound, view.StatusCode);
-        using var admin = await client.GetAsync("/api/reports/admin");
+        using var admin = await client.GetAsync("/api/reports/admin", TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.NotFound, admin.StatusCode);
-        await app.StopAsync();
+        await app.StopAsync(TestContext.Current.CancellationToken);
     }
 }

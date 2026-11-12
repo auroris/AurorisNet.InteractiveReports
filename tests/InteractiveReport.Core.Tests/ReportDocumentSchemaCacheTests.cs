@@ -48,7 +48,7 @@ public sealed class ReportDocumentSchemaCacheTests : IClassFixture<SqliteE2EFixt
 
         Assert.All(document.Tables!, table => Assert.Null(table.Value.Schema));
 
-        var result = await _executor.Query(Definition(), document, NoParams);
+        var result = await _executor.Query(Definition(), document, NoParams, TestContext.Current.CancellationToken);
 
         var returned = Assert.IsType<ReportState>(result.Document);
         var returnedTables = Assert.IsType<Dictionary<string, ReportTable>>(returned.Tables);
@@ -93,7 +93,7 @@ public sealed class ReportDocumentSchemaCacheTests : IClassFixture<SqliteE2EFixt
 
         // Nine customer groups exceed the chart's three-point runtime limit. The
         // active grid still succeeds because chart cache refresh is schema-only.
-        var result = await _executor.Query(definition, document, NoParams);
+        var result = await _executor.Query(definition, document, NoParams, TestContext.Current.CancellationToken);
 
         Assert.NotEmpty(result.Rows);
         Assert.Equal("source", result.Document!.ActiveTable);
@@ -119,7 +119,7 @@ public sealed class ReportDocumentSchemaCacheTests : IClassFixture<SqliteE2EFixt
             new ColumnInfo("GHOST", "Forged", "text", false),
         ];
 
-        var result = await _executor.Query(definition, document, NoParams);
+        var result = await _executor.Query(definition, document, NoParams, TestContext.Current.CancellationToken);
 
         Assert.Equal(10, result.TotalRows);
         Assert.Contains(result.Ignored, item =>
@@ -143,7 +143,7 @@ public sealed class ReportDocumentSchemaCacheTests : IClassFixture<SqliteE2EFixt
         ];
 
         var error = await Assert.ThrowsAsync<ReportValidationException>(
-            () => _executor.Query(Definition(), document, NoParams));
+            () => _executor.Query(Definition(), document, NoParams, TestContext.Current.CancellationToken));
 
         Assert.Contains(error.Errors, item =>
             item.Path == "tables.source.composables[0].filters[0].expr"
@@ -168,8 +168,8 @@ public sealed class ReportDocumentSchemaCacheTests : IClassFixture<SqliteE2EFixt
         var callerTable = callerTables["source"];
         var callerComposables = callerTable.Composables;
 
-        var result = await _executor.Query(Definition(), document, NoParams);
-        var export = await _executor.Download(Definition(), document, NoParams);
+        var result = await _executor.Query(Definition(), document, NoParams, TestContext.Current.CancellationToken);
+        var export = await _executor.Download(Definition(), document, NoParams, ct: TestContext.Current.CancellationToken);
 
         Assert.Equal("  SoUrCe  ", document.ActiveTable);
         Assert.Same(callerTables, document.Tables);
@@ -196,8 +196,8 @@ public sealed class ReportDocumentSchemaCacheTests : IClassFixture<SqliteE2EFixt
     {
         var document = Doc(source: new StageLayer { Columns = ["GHOST"] });
 
-        var result = await _executor.Query(Definition(), document, NoParams);
-        var export = await _executor.Download(Definition(), document, NoParams);
+        var result = await _executor.Query(Definition(), document, NoParams, TestContext.Current.CancellationToken);
+        var export = await _executor.Download(Definition(), document, NoParams, ct: TestContext.Current.CancellationToken);
 
         Assert.Equal(
             ["ORDER_ID", "CUSTOMER", "STATUS", "AMOUNT", "NOTES"],
@@ -224,7 +224,7 @@ public sealed class ReportDocumentSchemaCacheTests : IClassFixture<SqliteE2EFixt
             Page = new PageRequest { Index = 1, Size = 2 },
         };
 
-        var result = await _executor.Query(definition, partial, NoParams);
+        var result = await _executor.Query(definition, partial, NoParams, TestContext.Current.CancellationToken);
 
         Assert.Equal(definition.DefaultState.ActiveTable, result.Document!.ActiveTable);
         Assert.Equal(definition.DefaultState.Tables!.Keys, result.Document.Tables!.Keys);

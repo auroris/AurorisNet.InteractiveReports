@@ -72,7 +72,7 @@ public sealed class ConsistentReadTests : IDisposable
         var result = await Executor().Query(Definition(), Doc(source: new StageLayer
         {
             Aggregates = [new AggregateRule { Col = "AMOUNT", Fn = AggregateFn.Sum }],
-        }), NoParams);
+        }), NoParams, TestContext.Current.CancellationToken);
 
         Assert.Equal(3, result.TotalRows);
         Assert.Equal(60m, Convert.ToDecimal(result.Aggregates!["AMOUNT"]["sum"]));
@@ -83,10 +83,7 @@ public sealed class ConsistentReadTests : IDisposable
     [Fact]
     public async Task Group_stage_count_and_rows_share_one_read_transaction()
     {
-        var result = await Executor().Query(
-            Definition(),
-            WithCachedSourceSchema(Doc(tail: [Group(["CUSTOMER"])])),
-            NoParams);
+        var result = await Executor().Query(Definition(), WithCachedSourceSchema(Doc(tail: [Group(["CUSTOMER"])])), NoParams, TestContext.Current.CancellationToken);
 
         Assert.Equal(2, result.TotalRows);
         Assert.Equal([IsolationLevel.Serializable], _begun);
@@ -95,9 +92,7 @@ public sealed class ConsistentReadTests : IDisposable
     [Fact]
     public async Task Chart_count_and_rows_share_one_read_transaction()
     {
-        var result = await Executor().Query(
-            Definition(),
-            WithCachedSourceSchema(Doc(tail:
+        var result = await Executor().Query(Definition(), WithCachedSourceSchema(Doc(tail:
             [
                 ChartStage(shape =>
                 {
@@ -105,8 +100,7 @@ public sealed class ConsistentReadTests : IDisposable
                     shape.Label = "CUSTOMER";
                     shape.Fn = AggregateFn.Count;
                 }),
-            ])),
-            NoParams);
+            ])), NoParams, TestContext.Current.CancellationToken);
 
         Assert.Equal(2, result.TotalRows);
         Assert.Equal([IsolationLevel.Serializable], _begun);
@@ -115,17 +109,14 @@ public sealed class ConsistentReadTests : IDisposable
     [Fact]
     public async Task Pivot_discovery_count_and_rows_share_one_read_transaction()
     {
-        var result = await Executor().Query(
-            Definition(),
-            WithCachedSourceSchema(Doc(tail:
+        var result = await Executor().Query(Definition(), WithCachedSourceSchema(Doc(tail:
             [
                 Pivot(
                     rows: ["ORDER_ID"],
                     cols: ["CUSTOMER"],
                     values: [Metric("ir1", "AMOUNT", AggregateFn.Sum)],
                     totals: false),
-            ])),
-            NoParams);
+            ])), NoParams, TestContext.Current.CancellationToken);
 
         Assert.NotEmpty(result.Rows);
         Assert.Equal([IsolationLevel.Serializable], _begun);
@@ -134,13 +125,10 @@ public sealed class ConsistentReadTests : IDisposable
     [Fact]
     public async Task None_leaves_multi_statement_reads_untransacted()
     {
-        var result = await Executor().Query(
-            Definition(ReportConsistency.None),
-            Doc(source: new StageLayer
+        var result = await Executor().Query(Definition(ReportConsistency.None), Doc(source: new StageLayer
             {
                 Aggregates = [new AggregateRule { Col = "AMOUNT", Fn = AggregateFn.Sum }],
-            }),
-            NoParams);
+            }), NoParams, TestContext.Current.CancellationToken);
 
         Assert.Equal(3, result.TotalRows);
         Assert.Equal(60m, Convert.ToDecimal(result.Aggregates!["AMOUNT"]["sum"]));
@@ -160,10 +148,10 @@ public sealed class ConsistentReadTests : IDisposable
         {
             await using (var setup = new SqliteConnection(cs))
             {
-                await setup.OpenAsync();
+                await setup.OpenAsync(TestContext.Current.CancellationToken);
                 await using var create = setup.CreateCommand();
                 create.CommandText = "CREATE TABLE T (X INTEGER)";
-                await create.ExecuteNonQueryAsync();
+                await create.ExecuteNonQueryAsync(TestContext.Current.CancellationToken);
             }
 
             var manager = new ReportConnectionManager(new FileFactory(cs));
@@ -180,16 +168,16 @@ public sealed class ConsistentReadTests : IDisposable
             Assert.NotNull(scope.Transaction);
 
             await using var writer = new SqliteConnection(cs);
-            await writer.OpenAsync();
+            await writer.OpenAsync(TestContext.Current.CancellationToken);
             await using var insert = writer.CreateCommand();
             insert.CommandText = "INSERT INTO T VALUES (1)";
             insert.CommandTimeout = 1;   // BEGIN IMMEDIATE on the reader would make this wait, then fail
-            await insert.ExecuteNonQueryAsync();
+            await insert.ExecuteNonQueryAsync(TestContext.Current.CancellationToken);
 
             await using var count = reading.CreateCommand();
             count.Transaction = scope.Transaction;
             count.CommandText = "SELECT COUNT(*) FROM T";
-            Assert.Equal(1L, await count.ExecuteScalarAsync());
+            Assert.Equal(1L, await count.ExecuteScalarAsync(TestContext.Current.CancellationToken));
             await scope.CompleteAsync(CancellationToken.None);
         }
         finally

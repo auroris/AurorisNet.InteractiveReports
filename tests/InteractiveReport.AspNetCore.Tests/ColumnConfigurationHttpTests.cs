@@ -27,7 +27,7 @@ public sealed class ColumnConfigurationHttpTests : IAsyncLifetime
     private WebApplication? _app;
     private HttpClient _client = null!;
 
-    public async Task InitializeAsync()
+    public async ValueTask InitializeAsync()
     {
         _tempRoot = Directory.CreateTempSubdirectory("interactive-report-columns-").FullName;
         var dataPath = Path.Combine(_tempRoot, "column-data.db");
@@ -101,7 +101,7 @@ public sealed class ColumnConfigurationHttpTests : IAsyncLifetime
         _client = new HttpClient { BaseAddress = new Uri(address) };
     }
 
-    public async Task DisposeAsync()
+    public async ValueTask DisposeAsync()
     {
         _client?.Dispose();
         if (_app is not null)
@@ -162,8 +162,7 @@ public sealed class ColumnConfigurationHttpTests : IAsyncLifetime
         Assert.Equal("_self", createLink.GetProperty("target").GetString());
         Assert.Equal("navigate", createLink.GetProperty("mode").GetString());
 
-        using var response = await _client.PostAsync(
-            "/api/reports/broken/query", JsonContent.Create(new { v = 3 }));
+        using var response = await _client.PostAsync("/api/reports/broken/query", JsonContent.Create(new { v = 3 }), TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var result = await ReadJson(response);
         var item = Assert.Single(
@@ -190,8 +189,7 @@ public sealed class ColumnConfigurationHttpTests : IAsyncLifetime
                 },
             },
         };
-        using var response = await _client.PostAsync(
-            "/api/reports/managed/query", JsonContent.Create(state));
+        using var response = await _client.PostAsync("/api/reports/managed/query", JsonContent.Create(state), TestContext.Current.CancellationToken);
         var result = await ReadJson(response);
 
         Assert.Equal(
@@ -225,8 +223,7 @@ public sealed class ColumnConfigurationHttpTests : IAsyncLifetime
                 },
             },
         };
-        using var response = await _client.PostAsync(
-            "/api/reports/managed/query", JsonContent.Create(state));
+        using var response = await _client.PostAsync("/api/reports/managed/query", JsonContent.Create(state), TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var result = await ReadJson(response);
 

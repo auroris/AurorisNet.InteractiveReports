@@ -70,18 +70,18 @@ public class LiveDialectTests
         return LiveDb.CanSnapshotRead(connection);
     }
 
-    [SkippableTheory]
+    [Theory]
     [MemberData(nameof(Dialects))]
     public async Task Schema_discovery_reports_number_and_text_kinds(ReportDialect dialect)
     {
         var live = LiveDb.For(dialect);
-        var schema = await live.Executor.GetSchema(live.Definition(), NoParams);
+        var schema = await live.Executor.GetSchema(live.Definition(), NoParams, TestContext.Current.CancellationToken);
 
         Assert.Equal(ColumnKind.Number, schema.Single(c => c.Name.Equals("AMOUNT", StringComparison.OrdinalIgnoreCase)).Kind);
         Assert.Equal(ColumnKind.Text, schema.Single(c => c.Name.Equals("CUSTOMER", StringComparison.OrdinalIgnoreCase)).Kind);
     }
 
-    [SkippableTheory]
+    [Theory]
     [MemberData(nameof(Dialects))]
     public async Task Pathological_column_names_round_trip(ReportDialect dialect)
     {
@@ -93,12 +93,12 @@ public class LiveDialectTests
         await IdentifierTortureCorpus.AssertRoundTrip(live.Executor, definition);
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task Oracle_binding_parser_misreads_double_dash_inside_a_quoted_identifier()
     {
         var live = LiveDb.For(ReportDialect.Oracle);
         await using var connection = live.CreateConnection("live");
-        await connection.OpenAsync();
+        await connection.OpenAsync(TestContext.Current.CancellationToken);
         const string parameterizedSql =
             "SELECT COUNT(*) FROM (SELECT NOTES AS \"semi--name\" FROM IR_TEST_ORDERS) ir WHERE :probe = 1";
 
@@ -108,15 +108,15 @@ public class LiveDialectTests
         parameterized.Parameters.Add(new OracleParameter("probe", 1));
 
         var exception = await Assert.ThrowsAsync<OracleException>(
-            () => parameterized.ExecuteScalarAsync());
+            () => parameterized.ExecuteScalarAsync(TestContext.Current.CancellationToken));
         Assert.Equal(1008, exception.Number);
 
         await using var inlined = connection.CreateCommand();
         inlined.CommandText = parameterizedSql.Replace(":probe", "1", StringComparison.Ordinal);
-        Assert.Equal(10, Convert.ToInt32(await inlined.ExecuteScalarAsync()));
+        Assert.Equal(10, Convert.ToInt32(await inlined.ExecuteScalarAsync(TestContext.Current.CancellationToken)));
     }
 
-    [SkippableTheory]
+    [Theory]
     [MemberData(nameof(Dialects))]
     public async Task Filter_sort_page(ReportDialect dialect)
     {
@@ -137,7 +137,7 @@ public class LiveDialectTests
 
         var first = await live.Executor.Query(live.Definition(), Doc(
             source: Source(),
-            page: new PageRequest { Index = 1, Size = 3 }), NoParams);
+            page: new PageRequest { Index = 1, Size = 3 }), NoParams, TestContext.Current.CancellationToken);
         Assert.Equal(5, first.TotalRows);
         Assert.Equal([9000m, 7500m, 5000m], first.Rows.Select(r => Convert.ToDecimal(r["AMOUNT"])));
         Assert.Equal(3, first.Highlights.Count(hit => hit.Id == "big"));
@@ -146,24 +146,24 @@ public class LiveDialectTests
         // exactly the projection: the decoration marker rides along but is never exposed.
         var second = await live.Executor.Query(live.Definition(), Doc(
             source: Source(),
-            page: new PageRequest { Index = 2, Size = 3 }), NoParams);
+            page: new PageRequest { Index = 2, Size = 3 }), NoParams, TestContext.Current.CancellationToken);
         Assert.Equal(5, second.TotalRows);
         Assert.Equal([3000m, 1500m], second.Rows.Select(r => Convert.ToDecimal(r["AMOUNT"])));
         Assert.Empty(second.Highlights);
         Assert.All(second.Rows, row => Assert.Equal(5, row.Count));
     }
 
-    [SkippableTheory]
+    [Theory]
     [MemberData(nameof(Dialects))]
     public async Task Search_is_case_insensitive(ReportDialect dialect)
     {
         var live = LiveDb.For(dialect);
-        var result = await live.Executor.Query(live.Definition(), Doc(search: "ACME"), NoParams);
+        var result = await live.Executor.Query(live.Definition(), Doc(search: "ACME"), NoParams, TestContext.Current.CancellationToken);
 
         Assert.Equal(3, result.TotalRows);
     }
 
-    [SkippableTheory]
+    [Theory]
     [MemberData(nameof(Dialects))]
     public async Task Highlight_conditions_use_the_shared_expression_pipeline(ReportDialect dialect)
     {
@@ -185,7 +185,7 @@ public class LiveDialectTests
                     Style = new HighlightStyle { Bg = "#fef3c7" },
                 },
             ],
-        }), NoParams);
+        }), NoParams, TestContext.Current.CancellationToken);
 
         Assert.Equal(2, result.Highlights.Count(hit => hit.Id == "large"));
         Assert.Equal(3, result.Highlights.Count(hit => hit.Id == "acme"));
@@ -195,7 +195,7 @@ public class LiveDialectTests
             Assert.DoesNotContain(row.Keys, key => key.StartsWith("__ir_highlight_", StringComparison.OrdinalIgnoreCase)));
     }
 
-    [SkippableTheory]
+    [Theory]
     [MemberData(nameof(Dialects))]
     public async Task Blank_counts_converge_across_dialects(ReportDialect dialect)
     {
@@ -203,12 +203,12 @@ public class LiveDialectTests
         var result = await live.Executor.Query(live.Definition(), Doc(source: new StageLayer
         {
             Filters = [Filter("NOTES IS NULL OR NOTES = ''")],
-        }), NoParams);
+        }), NoParams, TestContext.Current.CancellationToken);
 
         Assert.Equal(4, result.TotalRows);
     }
 
-    [SkippableTheory]
+    [Theory]
     [MemberData(nameof(Dialects))]
     public async Task Between_and_in_compose(ReportDialect dialect)
     {
@@ -220,12 +220,12 @@ public class LiveDialectTests
                 Filter("AMOUNT BETWEEN 1000 AND 8000"),
                 Filter("IN_LIST(STATUS, 'SHIPPED', 'PENDING')"),
             ],
-        }), NoParams);
+        }), NoParams, TestContext.Current.CancellationToken);
 
         Assert.Equal(5, result.TotalRows);
     }
 
-    [SkippableTheory]
+    [Theory]
     [MemberData(nameof(Dialects))]
     public async Task Aggregates_are_exact(ReportDialect dialect)
     {
@@ -240,7 +240,7 @@ public class LiveDialectTests
                 new AggregateRule { Col = "AMOUNT", Fn = AggregateFn.Median },
                 new AggregateRule { Col = "CUSTOMER", Fn = AggregateFn.CountDistinct },
             ],
-        }), NoParams);
+        }), NoParams, TestContext.Current.CancellationToken);
 
         var amount = result.Aggregates["AMOUNT"];
         Assert.Equal(26000m, Convert.ToDecimal(amount["sum"]));
@@ -249,7 +249,7 @@ public class LiveDialectTests
         Assert.Equal(4L, Convert.ToInt64(result.Aggregates["CUSTOMER"]["countDistinct"]));
     }
 
-    [SkippableTheory]
+    [Theory]
     [MemberData(nameof(Dialects))]
     public async Task Breaks_group_and_total(ReportDialect dialect)
     {
@@ -258,7 +258,7 @@ public class LiveDialectTests
         {
             Breaks = ["STATUS"],
             Aggregates = [new AggregateRule { Col = "AMOUNT", Fn = AggregateFn.Sum }],
-        }), NoParams);
+        }), NoParams, TestContext.Current.CancellationToken);
 
         Assert.Equal(4, result.BreakTotals.Count);
         Assert.Equal([1L, 1L, 3L, 5L], result.BreakTotals.Select(b => b.Rows));
@@ -267,7 +267,7 @@ public class LiveDialectTests
             result.BreakTotals.Select(b => Convert.ToDecimal(b.Aggregates["AMOUNT"]["sum"])));
     }
 
-    [SkippableTheory]
+    [Theory]
     [MemberData(nameof(Dialects))]
     public async Task Computed_columns_filter_sort_and_concatenate(ReportDialect dialect)
     {
@@ -281,14 +281,14 @@ public class LiveDialectTests
             ],
             Filters = [Filter("ir1 >= 10000")],
             Sorts = [new SortRule { Col = "ir1", Dir = SortDir.Desc }],
-        }), NoParams);
+        }), NoParams, TestContext.Current.CancellationToken);
 
         Assert.Equal(5, result.TotalRows);
         Assert.Equal(24000m, Convert.ToDecimal(result.Rows[0]["ir1"]));
         Assert.Equal("STARK IND!", result.Rows[0]["ir2"]);
     }
 
-    [SkippableTheory]
+    [Theory]
     [MemberData(nameof(Dialects))]
     public async Task Case_computed_column_filters_and_aggregates(ReportDialect dialect)
     {
@@ -311,7 +311,7 @@ public class LiveDialectTests
             Filters = [Filter("ir1 = 'BIG'")],
             Sorts = [new SortRule { Col = "AMOUNT", Dir = SortDir.Desc }],
             Aggregates = [new AggregateRule { Col = "ir2", Fn = AggregateFn.Sum }],
-        }), NoParams);
+        }), NoParams, TestContext.Current.CancellationToken);
 
         // BIG = amounts ≥ 6000: Stark 12000, Acme 9000, Globex 7500, Tyrell 6000.
         Assert.Equal(4, result.TotalRows);
@@ -321,7 +321,7 @@ public class LiveDialectTests
         Assert.Equal(3m, Convert.ToDecimal(result.Aggregates["ir2"]["sum"]));
     }
 
-    [SkippableTheory]
+    [Theory]
     [MemberData(nameof(Dialects))]
     public async Task Case_blank_condition_exercises_null_and_empty_string_rows(ReportDialect dialect)
     {
@@ -337,14 +337,14 @@ public class LiveDialectTests
                 },
             ],
             Aggregates = [new AggregateRule { Col = "ir1", Fn = AggregateFn.Sum }],
-        }), NoParams);
+        }), NoParams, TestContext.Current.CancellationToken);
 
         // SQL Server preserves the seeded empty string; Oracle stores it as NULL.
         // The explicit portable blank condition must count the same four rows on both.
         Assert.Equal(4m, Convert.ToDecimal(result.Aggregates["ir1"]["sum"]));
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task Boolean_column_condition_executes_on_sqlserver()
     {
         var live = LiveDb.For(ReportDialect.SqlServer);
@@ -367,12 +367,12 @@ public class LiveDialectTests
                 },
             ],
             Aggregates = [new AggregateRule { Col = "ir1", Fn = AggregateFn.Sum }],
-        }), NoParams);
+        }), NoParams, TestContext.Current.CancellationToken);
 
         Assert.Equal(5m, Convert.ToDecimal(result.Aggregates["ir1"]["sum"]));
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task Boolean_column_condition_executes_on_postgres()
     {
         // Postgres has REAL booleans: the same expression that lowers to "= 1" on
@@ -394,12 +394,12 @@ public class LiveDialectTests
                 new ComputedColumn { Id = "ir1", Expr = "CASE WHEN LARGE_FLAG THEN 1 ELSE 0 END" },
             ],
             Aggregates = [new AggregateRule { Col = "ir1", Fn = AggregateFn.Sum }],
-        }), NoParams);
+        }), NoParams, TestContext.Current.CancellationToken);
 
         Assert.Equal(5m, Convert.ToDecimal(result.Aggregates["ir1"]["sum"]));
     }
 
-    [SkippableTheory]
+    [Theory]
     [MemberData(nameof(Dialects))]
     public async Task Date_parts_extract_from_native_and_iso_text_dates(ReportDialect dialect)
     {
@@ -421,7 +421,7 @@ public class LiveDialectTests
             ],
             Filters = [Filter("ir1 = 2026")],
             Sorts = [new SortRule { Col = "ORDER_ID", Dir = SortDir.Asc }],
-        }), NoParams);
+        }), NoParams, TestContext.Current.CancellationToken);
 
         // 2026 rows: ids 6–10.
         Assert.Equal(5, result.TotalRows);
@@ -433,7 +433,7 @@ public class LiveDialectTests
         Assert.Equal(16, Convert.ToInt32(first["ir4"]));
     }
 
-    [SkippableTheory]
+    [Theory]
     [MemberData(nameof(Dialects))]
     public async Task Date_vocabulary_agrees_across_engines(ReportDialect dialect)
     {
@@ -477,7 +477,7 @@ public class LiveDialectTests
                 new AggregateRule { Col = "ir7", Fn = AggregateFn.Sum },
             ],
             Sorts = [new SortRule { Col = "ORDER_ID", Dir = SortDir.Asc }],
-        }), NoParams);
+        }), NoParams, TestContext.Current.CancellationToken);
 
         Assert.Equal(5m, Convert.ToDecimal(result.Aggregates["ir1"]["sum"]));
         Assert.Equal(10m, Convert.ToDecimal(result.Aggregates["ir2"]["sum"]));
@@ -489,7 +489,7 @@ public class LiveDialectTests
             Assert.Equal(((string)r["ORDER_DATE_TEXT"]!)[..7], (string)r["ir4"]!));
     }
 
-    [SkippableTheory]
+    [Theory]
     [MemberData(nameof(Dialects))]
     public async Task Definition_timezone_pins_the_session_where_one_exists(ReportDialect dialect)
     {
@@ -507,7 +507,7 @@ public class LiveDialectTests
             _ => "SELECT ORDER_ID FROM IR_TEST_ORDERS",
         };
 
-        var result = await live.Executor.Query(def, new ReportState(), NoParams);
+        var result = await live.Executor.Query(def, new ReportState(), NoParams, TestContext.Current.CancellationToken);
 
         if (dialect == ReportDialect.SqlServer)
             Assert.Equal(10, result.TotalRows);
@@ -515,13 +515,13 @@ public class LiveDialectTests
             Assert.Equal("Pacific/Auckland", (string)result.Rows.Single()["TZ"]!);
     }
 
-    [SkippableTheory]
+    [Theory]
     [InlineData(ReportDialect.Oracle)]
     [InlineData(ReportDialect.Oracle11g)]
     public async Task Oracle_snapshot_reads_return_all_grid_datasets_from_one_read_only_scope(ReportDialect dialect)
     {
         var live = LiveDb.For(dialect);
-        Skip.IfNot(await OracleSnapshotReadsWork(live), OracleSnapshotSkip);
+        Assert.SkipUnless(await OracleSnapshotReadsWork(live), OracleSnapshotSkip);
         var def = live.Definition();
         def.Consistency = ReportConsistency.Snapshot;
 
@@ -531,7 +531,7 @@ public class LiveDialectTests
             Sorts = [new SortRule { Col = "ORDER_ID" }],
             Breaks = ["CUSTOMER"],
             Aggregates = [new AggregateRule { Col = "AMOUNT", Fn = AggregateFn.Sum }],
-        }), NoParams);
+        }), NoParams, TestContext.Current.CancellationToken);
 
         Assert.Equal(10, result.TotalRows);
         Assert.Equal(47_200m, Convert.ToDecimal(result.Aggregates!["AMOUNT"]["sum"]));
@@ -539,23 +539,23 @@ public class LiveDialectTests
         Assert.Equal(10, result.Rows.Count);
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task Sql_server_disabled_snapshot_fails_with_admin_guidance()
     {
         var live = LiveDb.For(ReportDialect.SqlServer);
-        Skip.If(await SqlServerSnapshotEnabled(live),
+        Assert.SkipWhen(await SqlServerSnapshotEnabled(live),
             "SQL Server snapshot isolation is enabled; the concurrency test covers this configuration");
 
         var definition = live.Definition();
         definition.Consistency = ReportConsistency.Snapshot;
         var error = await Assert.ThrowsAsync<InvalidOperationException>(
-            () => live.Executor.Query(definition, Doc(), NoParams));
+            () => live.Executor.Query(definition, Doc(), NoParams, TestContext.Current.CancellationToken));
 
         Assert.Contains("ALLOW_SNAPSHOT_ISOLATION", error.Message);
         Assert.Contains("consistency 'none'", error.Message);
     }
 
-    [SkippableTheory]
+    [Theory]
     [MemberData(nameof(Dialects))]
     public async Task Snapshot_scope_keeps_one_view_while_a_writer_commits(ReportDialect dialect)
     {
@@ -567,11 +567,11 @@ public class LiveDialectTests
 
         if (dialect == ReportDialect.SqlServer)
         {
-            Skip.IfNot(await SqlServerSnapshotEnabled(live),
+            Assert.SkipUnless(await SqlServerSnapshotEnabled(live),
                 "enable SQL Server snapshot reads with ALTER DATABASE [database] SET ALLOW_SNAPSHOT_ISOLATION ON");
         }
         if (dialect is ReportDialect.Oracle or ReportDialect.Oracle11g)
-            Skip.IfNot(await OracleSnapshotReadsWork(live), OracleSnapshotSkip);
+            Assert.SkipUnless(await OracleSnapshotReadsWork(live), OracleSnapshotSkip);
 
         try
         {
@@ -589,7 +589,7 @@ public class LiveDialectTests
             {
                 update.CommandText = "UPDATE IR_TEST_ORDERS SET AMOUNT = AMOUNT + 1 WHERE ORDER_ID = 1";
                 update.CommandTimeout = 5;
-                Assert.Equal(1, await update.ExecuteNonQueryAsync());
+                Assert.Equal(1, await update.ExecuteNonQueryAsync(TestContext.Current.CancellationToken));
             }
 
             var during = await Amount(reportConnection, scope.Transaction);
@@ -605,7 +605,7 @@ public class LiveDialectTests
             await using var restore = cleanup.CreateCommand();
             restore.CommandText = "UPDATE IR_TEST_ORDERS SET AMOUNT = 9000 WHERE ORDER_ID = 1";
             restore.CommandTimeout = 5;
-            await restore.ExecuteNonQueryAsync();
+            await restore.ExecuteNonQueryAsync(TestContext.Current.CancellationToken);
         }
 
         static async Task<DbConnection> Open(LiveDb database)
@@ -661,7 +661,7 @@ public class LiveDialectTests
         }
     }
 
-    [SkippableTheory]
+    [Theory]
     [MemberData(nameof(Dialects))]
     public async Task Context_params_bind_by_name(ReportDialect dialect)
     {
@@ -676,12 +676,12 @@ public class LiveDialectTests
         var result = await live.Executor.Query(def, Doc(source: new StageLayer
         {
             Filters = [Filter("STATUS = 'SHIPPED'")],
-        }), new Dictionary<string, object?> { ["minAmount"] = 5000m });
+        }), new Dictionary<string, object?> { ["minAmount"] = 5000m }, TestContext.Current.CancellationToken);
 
         Assert.Equal(3, result.TotalRows);   // SHIPPED with AMOUNT >= 5000: 9000, 7500, 5000
     }
 
-    [SkippableTheory]
+    [Theory]
     [MemberData(nameof(Dialects))]
     public async Task Group_By_and_Pivot_stages(ReportDialect dialect)
     {
@@ -690,7 +690,7 @@ public class LiveDialectTests
         var grouped = await live.Executor.Query(live.Definition(), Doc(tail:
         [
             Group(by: ["STATUS"], values: [Metric("ir1", "AMOUNT", AggregateFn.Sum)]),
-        ]), NoParams);
+        ]), NoParams, TestContext.Current.CancellationToken);
         Assert.Equal([1L, 1L, 3L, 5L], grouped.Rows.Select(r => Convert.ToInt64(r["__count"])));
         Assert.Equal([6000m, 400m, 14800m, 26000m], grouped.Rows.Select(r => Convert.ToDecimal(r["ir1"])));
 
@@ -705,7 +705,7 @@ public class LiveDialectTests
                     Breaks = ["STATUS"],
                     Aggregates = [new AggregateRule { Col = "ir1", Fn = AggregateFn.Sum }],
                 }),
-        ]), NoParams);
+        ]), NoParams, TestContext.Current.CancellationToken);
         Assert.Equal(7, groupedTable.TotalRows);
         Assert.Equal(46000m, Convert.ToDecimal(groupedTable.Aggregates["ir1"]["sum"]));
         var shippedGroups = groupedTable.BreakTotals.Single(total => Equals(total.Key["STATUS"], "SHIPPED"));
@@ -715,14 +715,14 @@ public class LiveDialectTests
         var pivot = await live.Executor.Query(live.Definition(), Doc(tail:
         [
             Pivot(rows: ["CUSTOMER"], cols: ["STATUS"], values: [Metric("ir1", "AMOUNT", AggregateFn.Sum)], totals: true),
-        ]), NoParams);
+        ]), NoParams, TestContext.Current.CancellationToken);
         var shippedCell = PivotCellId("pivot1", "ir1", "SHIPPED");
         var acme = pivot.Rows.Single(r => (string?)r["CUSTOMER"] == "Acme Corp");
         Assert.Equal(12000m, Convert.ToDecimal(acme[shippedCell]));
         Assert.Equal(26000m, Convert.ToDecimal(pivot.Aggregates[shippedCell]["sum"]));
     }
 
-    [SkippableTheory]
+    [Theory]
     [MemberData(nameof(Dialects))]
     public async Task Chart_view_orders_by_metric_and_caps_points(ReportDialect dialect)
     {
@@ -740,7 +740,7 @@ public class LiveDialectTests
                 shape.Fn = AggregateFn.Sum;
                 shape.Sort = new ChartSortSpec { By = "value", Dir = SortDir.Desc };
             }),
-        ]), NoParams);
+        ]), NoParams, TestContext.Current.CancellationToken);
         Assert.Equal(
             ["SHIPPED", "PENDING", "CANCELLED", "NEW"],
             chart.Rows.Select(r => (string)r[chart.Columns[0].Name]!));
@@ -761,11 +761,11 @@ public class LiveDialectTests
                     shape.Label = "CUSTOMER";
                     shape.Fn = AggregateFn.Count;
                 }),
-            ]), NoParams));
+            ]), NoParams, TestContext.Current.CancellationToken));
         Assert.Contains(ex.Errors, e => e.Path == "tables.chart1.composables[0]" && e.Message.Contains("3 points"));
     }
 
-    [SkippableTheory]
+    [Theory]
     [MemberData(nameof(Dialects))]
     public async Task Export_truncates_at_max_rows(ReportDialect dialect)
     {
@@ -777,7 +777,7 @@ public class LiveDialectTests
         var export = await live.Executor.Download(def, Doc(source: new StageLayer
         {
             Sorts = [new SortRule { Col = "AMOUNT", Dir = SortDir.Desc }],
-        }), NoParams);
+        }), NoParams, ct: TestContext.Current.CancellationToken);
 
         Assert.True(export.Truncated);
         Assert.Equal(3, export.Rows.Count);
@@ -806,7 +806,7 @@ internal sealed class LiveDb : IReportConnectionFactory
             _ => throw new ArgumentOutOfRangeException(nameof(dialect), dialect, null),
         };
         var cs = Environment.GetEnvironmentVariable(env);
-        Skip.If(string.IsNullOrWhiteSpace(cs), $"set {env} to run live {dialect} verification");
+        Assert.SkipWhen(string.IsNullOrWhiteSpace(cs), $"set {env} to run live {dialect} verification");
 
         // Oracle 11g mode shares the Oracle seed: same server, same table, only the dialect
         // the engine compiles for differs. The Oracle instance seeds; this one never does.

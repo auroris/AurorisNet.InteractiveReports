@@ -35,7 +35,7 @@ public sealed class RowRestrictionHttpTests : IAsyncLifetime
         request.UserId == "admin" ? RowRestriction.Unrestricted : RowRestriction.Where("p.CG = ?", 0));
     private InteractiveReportRowRestrictionCallback _additional = (_, _) => ValueTask.FromResult(RowRestriction.NotApplicable);
 
-    public async Task InitializeAsync()
+    public async ValueTask InitializeAsync()
     {
         _root = Directory.CreateTempSubdirectory("ir-row-restrictions-").FullName;
         var connectionString = $"Data Source={Path.Combine(_root, "data.db")};Pooling=False";
@@ -119,7 +119,7 @@ public sealed class RowRestrictionHttpTests : IAsyncLifetime
             .Features.Get<IServerAddressesFeature>()!.Addresses.Single()) };
     }
 
-    public async Task DisposeAsync()
+    public async ValueTask DisposeAsync()
     {
         _client?.Dispose();
         if (_app is not null) { await _app.StopAsync(); await _app.DisposeAsync(); }
@@ -176,7 +176,7 @@ public sealed class RowRestrictionHttpTests : IAsyncLifetime
 
         using var csv = await Send("/download/products/csv", state);
         Assert.Equal(HttpStatusCode.OK, csv.StatusCode);
-        var text = await csv.Content.ReadAsStringAsync();
+        var text = await csv.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
         Assert.Contains("public-a", text);
         Assert.Contains("public-b", text);
         Assert.DoesNotContain("secret-cg", text);
@@ -200,7 +200,7 @@ public sealed class RowRestrictionHttpTests : IAsyncLifetime
             Assert.Equal(user == "admin" ? 3 : 1, result.GetProperty("totalRows").Deserialize<long>(IrJson.Options));
             if (user != "admin") Assert.Equal(user == "alice" ? 1 : 2, result.GetProperty("rows")[0].GetProperty("ID").Deserialize<long>(IrJson.Options));
         }));
-        var definition = await _app.Services.GetRequiredService<IReportDefinitionStore>().Find("products");
+        var definition = await _app.Services.GetRequiredService<IReportDefinitionStore>().Find("products", TestContext.Current.CancellationToken);
         Assert.Equal(Sql, definition!.Sql);
     }
 
@@ -260,7 +260,7 @@ public sealed class RowRestrictionHttpTests : IAsyncLifetime
         var before = _opens;
         using var response = await Send("/reports/products/query", new ReportState());
         Assert.Equal(HttpStatusCode.InternalServerError, response.StatusCode);
-        Assert.DoesNotContain("sensitive", await response.Content.ReadAsStringAsync());
+        Assert.DoesNotContain("sensitive", await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
         Assert.Equal(before, _opens);
     }
 
@@ -309,7 +309,7 @@ public sealed class RowRestrictionHttpTests : IAsyncLifetime
         using var save = await Send($"/reports/products/saved", new { title = "Shared pivot", isGlobal = true, state }, "admin");
         Assert.Equal(HttpStatusCode.Created, save.StatusCode);
         var savedId = (await Json(save)).GetProperty("id").Deserialize<long>(IrJson.Options);
-        var stored = await _app.Services.GetRequiredService<ISavedReportStore>().Get(savedId);
+        var stored = await _app.Services.GetRequiredService<ISavedReportStore>().Get(savedId, TestContext.Current.CancellationToken);
         Assert.DoesNotContain("Controlled", stored!.StateJson);
         using var load = await Send($"/reports/products/{savedId}", body: null, method: HttpMethod.Get);
         Assert.DoesNotContain("Controlled", (await Success(load)).GetRawText());
@@ -349,15 +349,15 @@ public sealed class RowRestrictionHttpTests : IAsyncLifetime
 
         var id = await ReportDocumentTestIds.Default(_app.Services, "products");
         var store = _app.Services.GetRequiredService<ISavedReportStore>();
-        var original = (await store.Get(id))!;
+        var original = (await store.Get(id, TestContext.Current.CancellationToken))!;
         var configured = original with { StateJson = JsonSerializer.Serialize(state, IrJson.Options) };
-        Assert.True(await store.Update(configured, original));
+        Assert.True(await store.Update(configured, original, TestContext.Current.CancellationToken));
         using var restricted = await Send($"/reports/products/{id}", body: null, method: HttpMethod.Get);
         Assert.Equal(HttpStatusCode.OK, restricted.StatusCode);
         var fallback = await Success(restricted);
         Assert.Equal(JsonValueKind.Null, fallback.GetProperty("summary").ValueKind);
         Assert.DoesNotContain("secret-cg", fallback.GetRawText());
-        Assert.Equal(configured.StateJson, (await store.Get(id))!.StateJson);
+        Assert.Equal(configured.StateJson, (await store.Get(id, TestContext.Current.CancellationToken))!.StateJson);
     }
 
     private static ReportState BaseState(params TableComposable[] composables) => new()

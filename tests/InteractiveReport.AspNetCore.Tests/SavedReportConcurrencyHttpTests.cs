@@ -36,15 +36,15 @@ public sealed class SavedReportConcurrencyHttpTests
         var requested = await Create(host.Store, "Broken", "alice", "", rawState: invalidState);
         host.Store.RejectWrites = true;
 
-        var loaded = await host.Server.LoadDocument("orders", requested.Id, host.Context());
+        var loaded = await host.Server.LoadDocument("orders", requested.Id, host.Context(), TestContext.Current.CancellationToken);
 
         Assert.Null(loaded.Failure);
         Assert.Equal(fallback.Id, loaded.Value!.Metadata!.Id);
         Assert.Equal("one", loaded.Value.Result.Document!.Search);
         Assert.Single(loaded.Value.Result.Rows);
         Assert.Equal(1, host.Store.DefaultReads);
-        Assert.Equal(requested, await host.Store.Get(requested.Id));
-        Assert.Equal(fallback, await host.Store.Get(fallback.Id));
+        Assert.Equal(requested, await host.Store.Get(requested.Id, TestContext.Current.CancellationToken));
+        Assert.Equal(fallback, await host.Store.Get(fallback.Id, TestContext.Current.CancellationToken));
     }
 
     [Fact]
@@ -60,15 +60,15 @@ public sealed class SavedReportConcurrencyHttpTests
         var requested = await Create(host.Store, "Broken request", "alice", "", rawState: "{bad");
         host.Store.RejectWrites = true;
 
-        var loaded = await host.Server.LoadDocument(requested.Id, host.Context());
+        var loaded = await host.Server.LoadDocument(requested.Id, host.Context(), TestContext.Current.CancellationToken);
 
         Assert.Null(loaded.Failure);
         Assert.Null(loaded.Value!.Metadata);
         Assert.Single(loaded.Value.Result.Rows);
         Assert.Equal([requested.Id, fallback.Id, null], queriedIds);
         Assert.Equal(1, host.Store.DefaultReads);
-        Assert.Equal(requested, await host.Store.Get(requested.Id));
-        Assert.Equal(fallback, await host.Store.Get(fallback.Id));
+        Assert.Equal(requested, await host.Store.Get(requested.Id, TestContext.Current.CancellationToken));
+        Assert.Equal(fallback, await host.Store.Get(fallback.Id, TestContext.Current.CancellationToken));
     }
 
     [Theory]
@@ -86,14 +86,13 @@ public sealed class SavedReportConcurrencyHttpTests
         host.Store.RejectWrites = true;
 
         var loaded = defaultRoute
-            ? await host.Server.LoadDefaultDocument("orders", host.Context())
-            : await host.Server.LoadDocument(stored.Id, host.Context());
+            ? await host.Server.LoadDefaultDocument("orders", host.Context(), TestContext.Current.CancellationToken) : await host.Server.LoadDocument(stored.Id, host.Context(), TestContext.Current.CancellationToken);
 
         Assert.Null(loaded.Failure);
         Assert.Null(loaded.Value!.Metadata);
         Assert.Equal([stored.Id, null], queriedIds);
         Assert.Equal(1, host.Store.DefaultReads);
-        Assert.Equal(stored, await host.Store.Get(stored.Id));
+        Assert.Equal(stored, await host.Store.Get(stored.Id, TestContext.Current.CancellationToken));
     }
 
     [Fact]
@@ -101,14 +100,14 @@ public sealed class SavedReportConcurrencyHttpTests
     {
         await using var host = await Start();
         host.Store.RejectReads = host.Store.RejectWrites = true;
-        var valid = await host.Server.Query("orders", new ReportState { Search = "one" }, host.Context());
+        var valid = await host.Server.Query("orders", new ReportState { Search = "one" }, host.Context(), TestContext.Current.CancellationToken);
         Assert.Null(valid.Failure);
         Assert.Single(valid.Value!.Rows);
 
         var invalid = await host.Server.Query("orders", new ReportState
         {
             ActiveTable = "bad", Tables = new() { ["bad"] = null! },
-        }, host.Context());
+        }, host.Context(), TestContext.Current.CancellationToken);
         Assert.Equal(InteractiveReportErrorCodes.ReportStateInvalid, invalid.Failure!.Code);
     }
 
@@ -117,16 +116,16 @@ public sealed class SavedReportConcurrencyHttpTests
     {
         await using var host = await Start();
         host.Store.RejectWrites = true;
-        var listed = await host.Server.ListSavedReports("orders", host.Context());
+        var listed = await host.Server.ListSavedReports("orders", host.Context(), TestContext.Current.CancellationToken);
         Assert.Null(listed.Failure);
         Assert.Empty(listed.Value!);
-        var loaded = await host.Server.LoadDefaultDocument("orders", host.Context());
+        var loaded = await host.Server.LoadDefaultDocument("orders", host.Context(), TestContext.Current.CancellationToken);
         Assert.Null(loaded.Failure);
         Assert.Null(loaded.Value!.Metadata);
         Assert.Single(loaded.Value.Result.Rows);
-        Assert.Empty(await host.Store.ListAll());
+        Assert.Empty(await host.Store.ListAll(TestContext.Current.CancellationToken));
 
-        var queried = await host.Server.Query("orders", loaded.Value.Result.Document!, host.Context());
+        var queried = await host.Server.Query("orders", loaded.Value.Result.Document!, host.Context(), TestContext.Current.CancellationToken);
         Assert.Null(queried.Failure);
         Assert.Equal(JsonSerializer.Serialize(loaded.Value.Result.Document, IrJson.Options),
             JsonSerializer.Serialize(queried.Value!.Document, IrJson.Options));
@@ -135,9 +134,9 @@ public sealed class SavedReportConcurrencyHttpTests
 
         host.Store.RejectWrites = false;
         using var save = await host.Client.SendAsync(Request(HttpMethod.Post, "/api/reports/orders/saved", "alice",
-            new { title = "First saved report", state = loaded.Value.Result.Document }));
+            new { title = "First saved report", state = loaded.Value.Result.Document }), TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.Created, save.StatusCode);
-        Assert.Single(await host.Store.ListAll());
+        Assert.Single(await host.Store.ListAll(TestContext.Current.CancellationToken));
     }
 
     [Fact]
@@ -152,13 +151,13 @@ public sealed class SavedReportConcurrencyHttpTests
         host.Store.RejectWrites = true;
         host.Execution.Attempts = 0;
 
-        var loaded = await host.Server.LoadDocument(requested.Id, host.Context());
+        var loaded = await host.Server.LoadDocument(requested.Id, host.Context(), TestContext.Current.CancellationToken);
 
         Assert.Equal(InteractiveReportFailureKind.NotFound, loaded.Failure!.Kind);
         Assert.Equal(1, host.Store.DefaultReads);
         Assert.Equal(0, host.Execution.Attempts);
-        Assert.Equal(requested, await host.Store.Get(requested.Id));
-        Assert.Equal(fallback, await host.Store.Get(fallback.Id));
+        Assert.Equal(requested, await host.Store.Get(requested.Id, TestContext.Current.CancellationToken));
+        Assert.Equal(fallback, await host.Store.Get(fallback.Id, TestContext.Current.CancellationToken));
     }
 
     [Fact]
@@ -169,11 +168,11 @@ public sealed class SavedReportConcurrencyHttpTests
         var requested = await Create(host.Store, "Broken request", "alice", "", rawState: "{bad");
         host.Store.RejectWrites = true;
 
-        var loaded = await host.Server.LoadDocument(requested.Id, host.Context());
+        var loaded = await host.Server.LoadDocument(requested.Id, host.Context(), TestContext.Current.CancellationToken);
 
         Assert.Equal(InteractiveReportFailureKind.Forbidden, loaded.Failure!.Kind);
         Assert.Equal(0, host.Store.DefaultReads);
-        Assert.Equal(requested, await host.Store.Get(requested.Id));
+        Assert.Equal(requested, await host.Store.Get(requested.Id, TestContext.Current.CancellationToken));
     }
 
     [Fact]
@@ -188,7 +187,7 @@ public sealed class SavedReportConcurrencyHttpTests
             requested.Id, host.Context(), canceled.Token, _ => canceled.Cancel()));
 
         Assert.Equal(0, host.Store.DefaultReads);
-        Assert.Equal(requested, await host.Store.Get(requested.Id));
+        Assert.Equal(requested, await host.Store.Get(requested.Id, TestContext.Current.CancellationToken));
     }
 
     [Theory]
@@ -204,7 +203,7 @@ public sealed class SavedReportConcurrencyHttpTests
         host.Execution.FailuresRemaining = failures;
         host.Execution.Attempts = 0;
 
-        var loaded = await host.Server.LoadDocument(requested.Id, host.Context());
+        var loaded = await host.Server.LoadDocument(requested.Id, host.Context(), TestContext.Current.CancellationToken);
 
         if (success)
         {
@@ -218,8 +217,8 @@ public sealed class SavedReportConcurrencyHttpTests
             Assert.Equal(3, host.Execution.Attempts);
         }
         Assert.Equal(1, host.Store.DefaultReads);
-        Assert.Equal(requested, await host.Store.Get(requested.Id));
-        Assert.Equal(fallback, await host.Store.Get(fallback.Id));
+        Assert.Equal(requested, await host.Store.Get(requested.Id, TestContext.Current.CancellationToken));
+        Assert.Equal(fallback, await host.Store.Get(fallback.Id, TestContext.Current.CancellationToken));
     }
 
     [Fact]
@@ -237,11 +236,11 @@ public sealed class SavedReportConcurrencyHttpTests
             HttpMethod.Put,
             $"/api/reports/{report.Id}",
             "alice",
-            new { title = "Alice's stale write" }));
+            new { title = "Alice's stale write" }), TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
         Assert.True(host.Store.ReplacementApplied);
-        var current = (await host.Store.Get(report.Id))!;
+        var current = (await host.Store.Get(report.Id, TestContext.Current.CancellationToken))!;
         Assert.Equal("ALICE", current.Owner);
         Assert.Equal("Update race", current.Title);
         Assert.Equal("winner", Search(current.StateJson));
@@ -262,11 +261,11 @@ public sealed class SavedReportConcurrencyHttpTests
         using var response = await host.Client.SendAsync(Request(
             HttpMethod.Delete,
             $"/api/reports/{report.Id}",
-            "alice"));
+            "alice"), TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
         Assert.True(host.Store.ReplacementApplied);
-        var current = (await host.Store.Get(report.Id))!;
+        var current = (await host.Store.Get(report.Id, TestContext.Current.CancellationToken))!;
         Assert.Equal("bob", current.Owner);
         Assert.Equal("winner", Search(current.StateJson));
     }
@@ -286,16 +285,16 @@ public sealed class SavedReportConcurrencyHttpTests
         using var response = await host.Client.SendAsync(Request(
             HttpMethod.Get,
             $"/api/reports/{report.ReportName}/{report.Id}",
-            "mallory"));
+            "mallory"), TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         Assert.True(host.Store.ReplacementApplied);
-        using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
         Assert.Equal(
             "public-snapshot",
             body.RootElement.GetProperty("result").GetProperty("document").GetProperty("search").GetString());
 
-        var current = (await host.Store.Get(report.Id))!;
+        var current = (await host.Store.Get(report.Id, TestContext.Current.CancellationToken))!;
         Assert.Equal("bob", current.Owner);
         Assert.False(current.IsGlobal);
         Assert.Equal("private-current", Search(current.StateJson));
@@ -321,14 +320,14 @@ public sealed class SavedReportConcurrencyHttpTests
             {
                 query = "query Execute($id: ID!) { report(id: $id) { totalRows } }",
                 variables = new { id = report.Id },
-            }));
+            }), TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
         Assert.Equal(0, body.RootElement.GetProperty("data").GetProperty("report")
             .GetProperty("totalRows").GetInt64());
 
-        var current = (await host.Store.Get(report.Id))!;
+        var current = (await host.Store.Get(report.Id, TestContext.Current.CancellationToken))!;
         Assert.Equal("bob", current.Owner);
         Assert.False(current.IsGlobal);
         Assert.Equal("one", Search(current.StateJson));

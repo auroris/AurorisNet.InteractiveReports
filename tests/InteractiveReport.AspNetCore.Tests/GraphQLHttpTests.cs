@@ -25,7 +25,7 @@ public sealed class GraphQLHttpTests : IAsyncLifetime
     private WebApplication? _app;
     private HttpClient _client = null!;
 
-    public async Task InitializeAsync()
+    public async ValueTask InitializeAsync()
     {
         _tempRoot = Directory.CreateTempSubdirectory("interactive-report-graphql-").FullName;
         var documentDirectory = Path.Combine(_tempRoot, "ReportDocuments");
@@ -118,7 +118,7 @@ public sealed class GraphQLHttpTests : IAsyncLifetime
         _client = new HttpClient { BaseAddress = new Uri(address) };
     }
 
-    public async Task DisposeAsync()
+    public async ValueTask DisposeAsync()
     {
         _client?.Dispose();
         if (_app is not null)
@@ -248,14 +248,14 @@ public sealed class GraphQLHttpTests : IAsyncLifetime
                 }
               }
             }
-            """);
+            """, TestContext.Current.CancellationToken);
         File.SetLastWriteTimeUtc(path, DateTime.UtcNow.AddMinutes(2));
 
         using var response = await GraphQL(id, identity: null);
         var body = await ReadJson(response);
         Assert.False(body.TryGetProperty("errors", out _), body.GetRawText());
         Assert.Equal(3, body.GetProperty("data").GetProperty("report").GetProperty("totalRows").GetInt64());
-        Assert.NotNull(await _app!.Services.GetRequiredService<ISavedReportStore>().Get(id));
+        Assert.NotNull(await _app!.Services.GetRequiredService<ISavedReportStore>().Get(id, TestContext.Current.CancellationToken));
     }
 
     [Fact]
@@ -290,7 +290,7 @@ public sealed class GraphQLHttpTests : IAsyncLifetime
                 }
               }
             }
-            """);
+            """, TestContext.Current.CancellationToken);
         File.SetLastWriteTimeUtc(path, DateTime.UtcNow.AddMinutes(2));
 
         using var response = await GraphQL(id, identity: null);
@@ -298,7 +298,7 @@ public sealed class GraphQLHttpTests : IAsyncLifetime
 
         Assert.False(body.TryGetProperty("errors", out _), body.GetRawText());
         Assert.Equal(3, body.GetProperty("data").GetProperty("report").GetProperty("totalRows").GetInt64());
-        Assert.NotNull(await _app!.Services.GetRequiredService<ISavedReportStore>().Get(id));
+        Assert.NotNull(await _app!.Services.GetRequiredService<ISavedReportStore>().Get(id, TestContext.Current.CancellationToken));
     }
 
     [Fact]
@@ -846,9 +846,9 @@ public sealed class GraphQLHttpTests : IAsyncLifetime
     {
         var id = await DefaultId();
         var store = _app!.Services.GetRequiredService<ISavedReportStore>();
-        var stored = (await store.Get(id))!;
+        var stored = (await store.Get(id, TestContext.Current.CancellationToken))!;
         var drifted = stored with { IsGlobal = false, StateJson = "{ not json" };
-        Assert.True(await store.Update(drifted, stored));
+        Assert.True(await store.Update(drifted, stored, TestContext.Current.CancellationToken));
 
         var server = _app.Services.GetRequiredService<IInteractiveReportServer>();
         var loaded = await server.LoadDocument(id, new InteractiveReportRequestContext
@@ -856,13 +856,13 @@ public sealed class GraphQLHttpTests : IAsyncLifetime
             User = new ClaimsPrincipal(new ClaimsIdentity()),
             RequestServices = _app.Services,
             TraceIdentifier = "transient-default",
-        });
+        }, TestContext.Current.CancellationToken);
 
         Assert.Null(loaded.Failure);
         Assert.Null(loaded.Value!.Metadata);
         Assert.NotNull(loaded.Value.Result.Document);
         Assert.NotEmpty(loaded.Value.Result.Rows);
-        Assert.Equal(drifted, await store.Get(id));
+        Assert.Equal(drifted, await store.Get(id, TestContext.Current.CancellationToken));
     }
 
     [Fact]

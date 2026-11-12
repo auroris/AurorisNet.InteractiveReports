@@ -29,7 +29,7 @@ public sealed class AuthorizationHttpTests : IAsyncLifetime
     private WebApplication? _app;
     private HttpClient _client = null!;
 
-    public async Task InitializeAsync()
+    public async ValueTask InitializeAsync()
     {
         _tempRoot = Directory.CreateTempSubdirectory("interactive-report-authorization-table-").FullName;
         _connectionString = $"Data Source={Path.Combine(_tempRoot, "reports.db")};Pooling=False";
@@ -97,7 +97,7 @@ public sealed class AuthorizationHttpTests : IAsyncLifetime
         _client = new HttpClient { BaseAddress = new Uri(address) };
     }
 
-    public async Task DisposeAsync()
+    public async ValueTask DisposeAsync()
     {
         _client.Dispose();
         if (_app is not null)
@@ -215,12 +215,12 @@ public sealed class AuthorizationHttpTests : IAsyncLifetime
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
         await using var connection = new SqliteConnection(_connectionString);
-        await connection.OpenAsync();
+        await connection.OpenAsync(TestContext.Current.CancellationToken);
         await using var command = connection.CreateCommand();
         command.CommandText = "SELECT name FROM sqlite_master WHERE type = 'table'";
         var tables = new List<string>();
-        await using var reader = await command.ExecuteReaderAsync();
-        while (await reader.ReadAsync()) tables.Add(reader.GetString(0));
+        await using var reader = await command.ExecuteReaderAsync(TestContext.Current.CancellationToken);
+        while (await reader.ReadAsync(TestContext.Current.CancellationToken)) tables.Add(reader.GetString(0));
         Assert.Contains("TEST_IR_ADMINISTRATORS", tables);
         Assert.DoesNotContain("TEST_IR_SAVED_REPORTS", tables);
         Assert.DoesNotContain("IR_ADMINISTRATORS", tables);
@@ -235,7 +235,7 @@ public sealed class AuthorizationHttpTests : IAsyncLifetime
             Content = new StringContent("{not json", Encoding.UTF8, "application/json"),
         };
         malformed.Headers.Add("X-Test-Identity", "configured-admin");
-        using var malformedResponse = await _client.SendAsync(malformed);
+        using var malformedResponse = await _client.SendAsync(malformed, TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.BadRequest, malformedResponse.StatusCode);
         Assert.Equal("IR-1400", (await ReadJson(malformedResponse)).GetProperty("code").GetString());
 

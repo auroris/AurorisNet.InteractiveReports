@@ -5,7 +5,7 @@ using Microsoft.Data.Sqlite;
 
 namespace InteractiveReport.Core.Tests;
 
-public sealed class SqliteAdministratorStoreTests : AdministratorStoreCorpus, IDisposable
+public sealed class SqliteAdministratorStoreTests : AdministratorStoreCorpus
 {
     private readonly SqliteConnection _keepAlive;
     private readonly string _connectionString;
@@ -36,5 +36,5 @@ public sealed class SqliteAdministratorStoreTests : AdministratorStoreCorpus, ID
         Assert.Contains("IDENTITY_VALUE NVARCHAR(400) COLLATE Latin1_General_100_BIN2 PRIMARY KEY", ddl);
     }
 
-    public void Dispose() => _keepAlive.Dispose();
+    protected override Task CleanUp() => _keepAlive.DisposeAsync().AsTask();
 }

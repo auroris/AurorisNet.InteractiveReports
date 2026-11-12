@@ -57,7 +57,7 @@ public sealed class ConfiguredReportDocumentSynchronizerTests : IDisposable
     {
         var (synchronizer, store, _) = Build(_defaultPath, _regionalPath);
 
-        await synchronizer.EnsureSynced();
+        await synchronizer.EnsureSynced(TestContext.Current.CancellationToken);
 
         Assert.Equal(2, store.Rows.Count);
         var row = store.Rows.Values.Single(report => report.Title == "Regional View");
@@ -84,7 +84,7 @@ public sealed class ConfiguredReportDocumentSynchronizerTests : IDisposable
             """);
         var (synchronizer, store, _) = Build(_defaultPath, _regionalPath);
 
-        await synchronizer.EnsureSynced();
+        await synchronizer.EnsureSynced(TestContext.Current.CancellationToken);
 
         var duplicates = store.Rows.Values
             .Where(report => report.Title == "Committed Default")
@@ -97,10 +97,10 @@ public sealed class ConfiguredReportDocumentSynchronizerTests : IDisposable
     public async Task Existing_database_identities_are_not_reprobed_when_a_file_changes()
     {
         var (synchronizer, store, _) = Build(_defaultPath, _regionalPath);
-        await synchronizer.EnsureSynced();
+        await synchronizer.EnsureSynced(TestContext.Current.CancellationToken);
         store.Calls.Clear();
 
-        await synchronizer.EnsureSynced();
+        await synchronizer.EnsureSynced(TestContext.Current.CancellationToken);
         Assert.Equal(["listAll"], store.Calls);
         store.Calls.Clear();
 
@@ -110,7 +110,7 @@ public sealed class ConfiguredReportDocumentSynchronizerTests : IDisposable
             """);
         File.SetLastWriteTimeUtc(_regionalPath, DateTime.UtcNow.AddMinutes(1));
 
-        await synchronizer.EnsureSynced();
+        await synchronizer.EnsureSynced(TestContext.Current.CancellationToken);
         Assert.Equal(["listAll"], store.Calls);
         Assert.Contains(store.Rows.Values, row => row.Title == "Regional View");
         Assert.DoesNotContain(store.Rows.Values, row => row.Title == "Regional View v2");
@@ -121,7 +121,7 @@ public sealed class ConfiguredReportDocumentSynchronizerTests : IDisposable
     {
         var originalTimestamp = File.GetLastWriteTimeUtc(_regionalPath);
         var (synchronizer, store, _) = Build(_defaultPath, _regionalPath);
-        await synchronizer.EnsureSynced();
+        await synchronizer.EnsureSynced(TestContext.Current.CancellationToken);
         store.Calls.Clear();
 
         File.WriteAllText(_regionalPath, """
@@ -130,7 +130,7 @@ public sealed class ConfiguredReportDocumentSynchronizerTests : IDisposable
             """);
         File.SetLastWriteTimeUtc(_regionalPath, originalTimestamp);
 
-        await synchronizer.EnsureSynced();
+        await synchronizer.EnsureSynced(TestContext.Current.CancellationToken);
 
         Assert.Equal(["listAll"], store.Calls);
         Assert.Contains(store.Rows.Values, row => row.Title == "Regional View");
@@ -140,7 +140,7 @@ public sealed class ConfiguredReportDocumentSynchronizerTests : IDisposable
     public async Task Explicit_synchronization_reads_every_private_and_public_database_row()
     {
         var (synchronizer, store, _) = Build(_defaultPath);
-        await synchronizer.EnsureSynced();
+        await synchronizer.EnsureSynced(TestContext.Current.CancellationToken);
         var otherUsersPrivate = new SavedReport
         {
             Id = 0,
@@ -150,10 +150,10 @@ public sealed class ConfiguredReportDocumentSynchronizerTests : IDisposable
             StateJson = "{\"v\":3}",
             ModifiedUtc = DateTime.UtcNow,
         };
-        await store.Create(otherUsersPrivate);
+        await store.Create(otherUsersPrivate, TestContext.Current.CancellationToken);
         store.Calls.Clear();
 
-        await synchronizer.EnsureSynced();
+        await synchronizer.EnsureSynced(TestContext.Current.CancellationToken);
 
         Assert.Equal(["listAll"], store.Calls);
         Assert.Contains(store.Rows.Values, report => report.Id == otherUsersPrivate.Id);
@@ -172,14 +172,14 @@ public sealed class ConfiguredReportDocumentSynchronizerTests : IDisposable
             StateJson = "{\"v\":3}",
             ModifiedUtc = DateTime.UtcNow,
         };
-        await store.Create(userRow);
-        await synchronizer.EnsureSynced();
+        await store.Create(userRow, TestContext.Current.CancellationToken);
+        await synchronizer.EnsureSynced(TestContext.Current.CancellationToken);
         Assert.Equal(3, store.Rows.Count);
 
         // The definition drops the regional document (an options reload); its synced
         // row is an orphan now — the user row must survive the cleanup.
         monitor.Swap(OptionsWith());
-        await synchronizer.EnsureSynced();
+        await synchronizer.EnsureSynced(TestContext.Current.CancellationToken);
 
         var remaining = Assert.Single(store.Rows.Values);
         Assert.Equal(userRow.Id, remaining.Id);
@@ -202,18 +202,18 @@ public sealed class ConfiguredReportDocumentSynchronizerTests : IDisposable
             ModifiedUtc = DateTime.UtcNow,
             Origin = SavedReportOrigin.User,
         };
-        await store.Create(selected);
+        await store.Create(selected, TestContext.Current.CancellationToken);
         store.FailCreates = true;
 
         // The previous default is demoted before the configured one is inserted; a failed insert
         // leaves that demotion in place and the next synchronization completes the hand-over.
         await Assert.ThrowsAsync<ReportDocumentBootstrapException>(
-            () => synchronizer.EnsureSynced());
+            () => synchronizer.EnsureSynced(TestContext.Current.CancellationToken));
         var demoted = Assert.Single(store.Rows.Values);
         Assert.False(demoted.IsDefault);
 
         store.FailCreates = false;
-        await synchronizer.EnsureSynced();
+        await synchronizer.EnsureSynced(TestContext.Current.CancellationToken);
         Assert.Equal(2, store.Rows.Count);
         var configured = Assert.Single(store.Rows.Values, row => row.IsDefault);
         Assert.Equal(SavedReportOrigin.Configured, configured.Origin);
@@ -236,9 +236,9 @@ public sealed class ConfiguredReportDocumentSynchronizerTests : IDisposable
             ModifiedUtc = DateTime.UtcNow,
             Origin = SavedReportOrigin.User,
         };
-        await store.Create(selected);
+        await store.Create(selected, TestContext.Current.CancellationToken);
 
-        await synchronizer.EnsureSynced();
+        await synchronizer.EnsureSynced(TestContext.Current.CancellationToken);
 
         Assert.Equal(2, store.Rows.Count);
         var configured = Assert.Single(store.Rows.Values, row => row.IsDefault);
@@ -254,7 +254,7 @@ public sealed class ConfiguredReportDocumentSynchronizerTests : IDisposable
     public async Task Existing_database_default_selection_is_not_rewritten_from_file_edits()
     {
         var (synchronizer, store, monitor) = Build(_defaultPath, _regionalPath);
-        await synchronizer.EnsureSynced();
+        await synchronizer.EnsureSynced(TestContext.Current.CancellationToken);
         var originalIds = store.Rows.Values.ToDictionary(row => row.SourceFile!, row => row.Id);
 
         File.WriteAllText(_defaultPath, """
@@ -269,7 +269,7 @@ public sealed class ConfiguredReportDocumentSynchronizerTests : IDisposable
         File.SetLastWriteTimeUtc(_regionalPath, DateTime.UtcNow.AddMinutes(1));
         monitor.Swap(OptionsWith(_defaultPath, _regionalPath));
 
-        await synchronizer.EnsureSynced();
+        await synchronizer.EnsureSynced(TestContext.Current.CancellationToken);
 
         Assert.Equal(2, store.Rows.Count);
         Assert.All(store.Rows.Values, row => Assert.Equal(originalIds[row.SourceFile!], row.Id));

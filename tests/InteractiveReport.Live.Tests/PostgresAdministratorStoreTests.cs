@@ -14,7 +14,7 @@ public sealed class PostgresAdministratorStoreTests : AdministratorStoreCorpus
     protected override SqlAdministratorStore CreateStore()
     {
         var connectionString = ConnectionString;
-        Skip.If(
+        Assert.SkipWhen(
             string.IsNullOrWhiteSpace(connectionString),
             "set IR_TEST_POSTGRES to run live Postgres administrator-store verification");
 

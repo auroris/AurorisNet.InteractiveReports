@@ -18,7 +18,7 @@ public sealed class PostgresSavedReportStoreTests : SavedReportStoreCorpus
     protected override SqlSavedReportStore CreateStore()
     {
         var connectionString = ConnectionString;
-        Skip.If(
+        Assert.SkipWhen(
             string.IsNullOrWhiteSpace(connectionString),
             "set IR_TEST_POSTGRES to run live Postgres saved-report verification");
 

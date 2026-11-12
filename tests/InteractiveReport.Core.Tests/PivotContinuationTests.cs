@@ -50,9 +50,9 @@ public sealed class PivotContinuationTests
                 return [new PivotGroup(["Acme"], ["SHIPPED"], 2, [12000m])];
             });
 
-        var child = await compiler.Compile("child", default);
-        _ = await compiler.Compile("pivot", default);
-        _ = await compiler.Compile("child", default);
+        var child = await compiler.Compile("child", TestContext.Current.CancellationToken);
+        _ = await compiler.Compile("pivot", TestContext.Current.CancellationToken);
+        _ = await compiler.Compile("child", TestContext.Current.CancellationToken);
 
         Assert.Equal(1, discoveries);
         Assert.True(child.Export.Bound.Relation.Output.TryGetValue(shipped, out _));
@@ -67,7 +67,7 @@ public sealed class PivotContinuationTests
         var first = await Compiler(
             firstDocument,
             () => [new PivotGroup(["Acme"], ["B"], 1, [10m])])
-            .Compile("pivot", default);
+            .Compile("pivot", TestContext.Current.CancellationToken);
         var firstB = CellIds(first)["B"];
 
         var changedDocument = Document(active: "pivot");
@@ -82,7 +82,7 @@ public sealed class PivotContinuationTests
                 new PivotGroup(["Acme"], ["A"], 1, [5m]),
                 new PivotGroup(["Acme"], ["B"], 1, [10m]),
             ])
-            .Compile("pivot", default);
+            .Compile("pivot", TestContext.Current.CancellationToken);
         var changedIds = CellIds(changed);
 
         Assert.Equal(firstB, changedIds["B"]);

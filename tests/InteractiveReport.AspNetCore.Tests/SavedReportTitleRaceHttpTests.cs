@@ -29,7 +29,7 @@ public sealed class SavedReportTitleRaceHttpTests : IAsyncLifetime
     private HttpClient _client = null!;
     private long _reportId;
 
-    public async Task InitializeAsync()
+    public async ValueTask InitializeAsync()
     {
         _tempRoot = Directory.CreateTempSubdirectory("interactive-report-race-").FullName;
         var dataPath = Path.Combine(_tempRoot, "data.db");
@@ -84,7 +84,7 @@ public sealed class SavedReportTitleRaceHttpTests : IAsyncLifetime
         _reportId = await ReportDocumentTestIds.Default(_app.Services, ReportName);
     }
 
-    public async Task DisposeAsync()
+    public async ValueTask DisposeAsync()
     {
         _client?.Dispose();
         if (_app is not null)
@@ -99,12 +99,10 @@ public sealed class SavedReportTitleRaceHttpTests : IAsyncLifetime
     [Fact]
     public async Task A_save_losing_the_title_race_gets_the_same_409_as_the_pre_check()
     {
-        using var raced = await _client.PostAsync(
-            $"/api/reports/{ReportName}/saved",
-            JsonContent.Create(new { title = "Contested", state = new { v = 3 } }));
+        using var raced = await _client.PostAsync($"/api/reports/{ReportName}/saved", JsonContent.Create(new { title = "Contested", state = new { v = 3 } }), TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.Conflict, raced.StatusCode);
-        using var problem = JsonDocument.Parse(await raced.Content.ReadAsStringAsync());
+        using var problem = JsonDocument.Parse(await raced.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
         Assert.Equal(
             "IR-1309",
             problem.RootElement.GetProperty("code").GetString());
@@ -115,9 +113,7 @@ public sealed class SavedReportTitleRaceHttpTests : IAsyncLifetime
         Assert.Contains("Contested", problem.RootElement.GetProperty("details").GetString());
 
         // The rival's row survives; a save under a fresh title still works.
-        using var retry = await _client.PostAsync(
-            $"/api/reports/{ReportName}/saved",
-            JsonContent.Create(new { title = "Uncontested", state = new { v = 3 } }));
+        using var retry = await _client.PostAsync($"/api/reports/{ReportName}/saved", JsonContent.Create(new { title = "Uncontested", state = new { v = 3 } }), TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.Created, retry.StatusCode);
     }
 

@@ -35,16 +35,16 @@ public sealed class InteractiveReportAuthorizationHttpTests
             reports.UseAuthorization((request, _) => { sources.Enqueue(request.Resource.SourceReportName); return ValueTask.FromResult(true); });
         });
         foreach (var value in new[] { "0", "-1", "bad", "1&pageSize=2" }) {
-            using var invalid = await host.Client.SendAsync(Request(HttpMethod.Get, "/api/reports/orders/default?pageSize=" + value, "alice"));
+            using var invalid = await host.Client.SendAsync(Request(HttpMethod.Get, "/api/reports/orders/default?pageSize=" + value, "alice"), TestContext.Current.CancellationToken);
             Assert.Equal(HttpStatusCode.BadRequest, invalid.StatusCode);
         }
-        using var small = await host.Client.SendAsync(Request(HttpMethod.Get, "/api/reports/orders/default?pageSize=1", "alice"));
+        using var small = await host.Client.SendAsync(Request(HttpMethod.Get, "/api/reports/orders/default?pageSize=1", "alice"), TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, small.StatusCode);
         Assert.Equal(1, (await ReadJson(small)).GetProperty("result").GetProperty("document").GetProperty("page").GetProperty("size").GetInt32());
-        using var large = await host.Client.SendAsync(Request(HttpMethod.Get, "/api/reports/orders/default?pageSize=100", "alice"));
+        using var large = await host.Client.SendAsync(Request(HttpMethod.Get, "/api/reports/orders/default?pageSize=100", "alice"), TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, large.StatusCode);
         Assert.Equal(2, (await ReadJson(large)).GetProperty("result").GetProperty("page").GetProperty("size").GetInt32());
-        using var unchanged = await host.Client.SendAsync(Request(HttpMethod.Get, "/api/reports/orders/default", "alice"));
+        using var unchanged = await host.Client.SendAsync(Request(HttpMethod.Get, "/api/reports/orders/default", "alice"), TestContext.Current.CancellationToken);
         Assert.Equal(2, (await ReadJson(unchanged)).GetProperty("result").GetProperty("document").GetProperty("page").GetProperty("size").GetInt32());
         Assert.Contains("orders-source", sources);
     }
@@ -64,25 +64,25 @@ public sealed class InteractiveReportAuthorizationHttpTests
         });
 
         using var schemaResponse = await host.Client.SendAsync(Request(
-            HttpMethod.Get, "/api/reports/orders/schema", "action-admin"));
+            HttpMethod.Get, "/api/reports/orders/schema", "action-admin"), TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, schemaResponse.StatusCode);
         var state = (await ReadJson(schemaResponse)).GetProperty("defaultState");
 
         using var query = await host.Client.SendAsync(Request(
-            HttpMethod.Post, "/api/reports/orders/query", "action-admin", state));
+            HttpMethod.Post, "/api/reports/orders/query", "action-admin", state), TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, query.StatusCode);
         using var export = await host.Client.SendAsync(Request(
-            HttpMethod.Post, "/api/download/orders/csv", "action-admin", state));
+            HttpMethod.Post, "/api/download/orders/csv", "action-admin", state), TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, export.StatusCode);
         using var list = await host.Client.SendAsync(Request(
-            HttpMethod.Get, "/api/reports/orders", "action-admin"));
+            HttpMethod.Get, "/api/reports/orders", "action-admin"), TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, list.StatusCode);
 
         using var save = await host.Client.SendAsync(Request(
             HttpMethod.Post,
             $"/api/reports/orders/saved",
             "action-admin",
-            new { title = "Lifecycle", isGlobal = true, state }));
+            new { title = "Lifecycle", isGlobal = true, state }), TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.Created, save.StatusCode);
         var id = (await ReadJson(save)).GetProperty("id").GetInt64();
 
@@ -90,11 +90,11 @@ public sealed class InteractiveReportAuthorizationHttpTests
             HttpMethod.Put,
             $"/api/reports/{id}",
             "action-admin",
-            new { isDefault = true }));
+            new { isDefault = true }), TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, makeDefault.StatusCode);
 
         using var load = await host.Client.SendAsync(Request(
-            HttpMethod.Get, $"/api/reports/orders/{id}", "action-admin"));
+            HttpMethod.Get, $"/api/reports/orders/{id}", "action-admin"), TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, load.StatusCode);
         using var update = await host.Client.SendAsync(Request(
             HttpMethod.Put,
@@ -105,38 +105,38 @@ public sealed class InteractiveReportAuthorizationHttpTests
                 title = "Lifecycle Updated",
                 owner = "next-owner",
                 state,
-            }));
+            }), TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, update.StatusCode);
         using var download = await host.Client.SendAsync(Request(
             HttpMethod.Get,
             $"/api/reports/admin/saved/{id}/document",
-            "action-admin"));
+            "action-admin"), TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, download.StatusCode);
         using var upload = await host.Client.SendAsync(Request(
             HttpMethod.Post,
             $"/api/reports/admin/orders/documents",
             "action-admin",
-            new { title = "Uploaded", state }));
+            new { title = "Uploaded", state }), TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.Created, upload.StatusCode);
         using var delete = await host.Client.SendAsync(Request(
-            HttpMethod.Delete, $"/api/reports/{id}", "action-admin"));
+            HttpMethod.Delete, $"/api/reports/{id}", "action-admin"), TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.NoContent, delete.StatusCode);
         using var all = await host.Client.SendAsync(Request(
             HttpMethod.Get,
             $"/api/reports/{SavedReportsListingDefinition.Name}/schema",
-            "action-admin"));
+            "action-admin"), TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, all.StatusCode);
         using var users = await host.Client.SendAsync(Request(
-            HttpMethod.Get, "/api/reports/admin/users", "action-admin"));
+            HttpMethod.Get, "/api/reports/admin/users", "action-admin"), TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, users.StatusCode);
         using var listAdministrators = await host.Client.SendAsync(Request(
-            HttpMethod.Get, "/api/reports/admin/administrators", "action-admin"));
+            HttpMethod.Get, "/api/reports/admin/administrators", "action-admin"), TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, listAdministrators.StatusCode);
         using var setAdministrators = await host.Client.SendAsync(Request(
             HttpMethod.Put,
             "/api/reports/admin/administrators",
             "action-admin",
-            new { identities = new[] { "second-admin" } }));
+            new { identities = new[] { "second-admin" } }), TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.NoContent, setAdministrators.StatusCode);
 
         Assert.Equal(
@@ -156,12 +156,12 @@ public sealed class InteractiveReportAuthorizationHttpTests
                 HttpMethod.Post,
                 $"/api/reports/orders/saved",
                 "callback-admin",
-                new { title = "Published", isGlobal = true, state = new { } }));
+                new { title = "Published", isGlobal = true, state = new { } }), TestContext.Current.CancellationToken);
             Assert.Equal(HttpStatusCode.Forbidden, save.StatusCode);
             using var listing = await narrowingOnly.Client.SendAsync(Request(
                 HttpMethod.Get,
                 $"/api/reports/{SavedReportsListingDefinition.Name}/schema",
-                "callback-admin"));
+                "callback-admin"), TestContext.Current.CancellationToken);
             Assert.Equal(HttpStatusCode.NotFound, listing.StatusCode);
         }
 
@@ -181,7 +181,7 @@ public sealed class InteractiveReportAuthorizationHttpTests
             HttpMethod.Post,
             $"/api/reports/orders/saved",
             "callback-admin",
-            new { title = "Published", isGlobal = true, state = new { } }));
+            new { title = "Published", isGlobal = true, state = new { } }), TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.Created, published.StatusCode);
         var calls = seen.ToArray();
@@ -204,13 +204,13 @@ public sealed class InteractiveReportAuthorizationHttpTests
         using var adminListing = await host.Client.SendAsync(Request(
             HttpMethod.Get,
             $"/api/reports/{SavedReportsListingDefinition.Name}/schema",
-            "callback-admin"));
+            "callback-admin"), TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, adminListing.StatusCode);
         Assert.Contains(seen, call => call.Action == InteractiveReportAction.ListAllSavedReports);
         using var outsiderListing = await host.Client.SendAsync(Request(
             HttpMethod.Get,
             $"/api/reports/{SavedReportsListingDefinition.Name}/schema",
-            "someone-else"));
+            "someone-else"), TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.NotFound, outsiderListing.StatusCode);
     }
 
@@ -228,29 +228,29 @@ public sealed class InteractiveReportAuthorizationHttpTests
 
         // The configured administrator is not one while the application answers the question.
         using var configured = await host.Client.SendAsync(Request(
-            HttpMethod.Get, $"/api/reports/{SavedReportsListingDefinition.Name}/schema", "configured-admin"));
+            HttpMethod.Get, $"/api/reports/{SavedReportsListingDefinition.Name}/schema", "configured-admin"), TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.NotFound, configured.StatusCode);
         using var configuredWhoami = await host.Client.SendAsync(Request(
-            HttpMethod.Get, "/api/reports/whoami", "configured-admin"));
+            HttpMethod.Get, "/api/reports/whoami", "configured-admin"), TestContext.Current.CancellationToken);
         var configuredIdentity = await ReadJson(configuredWhoami);
         Assert.False(configuredIdentity.GetProperty("isAdministrator").GetBoolean());
         Assert.Equal("none", configuredIdentity.GetProperty("administratorSource").GetString());
         Assert.True(configuredIdentity.GetProperty("administratorsManagedByApplication").GetBoolean());
 
         using var hooked = await host.Client.SendAsync(Request(
-            HttpMethod.Get, $"/api/reports/{SavedReportsListingDefinition.Name}/schema", "hooked-admin", roles: ["admins"]));
+            HttpMethod.Get, $"/api/reports/{SavedReportsListingDefinition.Name}/schema", "hooked-admin", roles: ["admins"]), TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, hooked.StatusCode);
         using var hookedWhoami = await host.Client.SendAsync(Request(
-            HttpMethod.Get, "/api/reports/whoami", "hooked-admin", roles: ["admins"]));
+            HttpMethod.Get, "/api/reports/whoami", "hooked-admin", roles: ["admins"]), TestContext.Current.CancellationToken);
         Assert.Equal("application", (await ReadJson(hookedWhoami)).GetProperty("administratorSource").GetString());
         using var lists = await host.Client.SendAsync(Request(
-            HttpMethod.Get, "/api/reports/admin/administrators", "hooked-admin", roles: ["admins"]));
+            HttpMethod.Get, "/api/reports/admin/administrators", "hooked-admin", roles: ["admins"]), TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, lists.StatusCode);
         Assert.True((await ReadJson(lists)).GetProperty("managedByApplication").GetBoolean());
 
         // Unauthenticated callers are never put to the application.
         using var anonymous = await host.Client.SendAsync(Request(
-            HttpMethod.Get, $"/api/reports/{SavedReportsListingDefinition.Name}/schema", null));
+            HttpMethod.Get, $"/api/reports/{SavedReportsListingDefinition.Name}/schema", null), TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.Unauthorized, anonymous.StatusCode);
         Assert.DoesNotContain(null, asked);
         Assert.Contains("configured-admin", asked);
@@ -267,14 +267,14 @@ public sealed class InteractiveReportAuthorizationHttpTests
             settings: new Dictionary<string, string?> { ["InteractiveReport:AdministratorPolicy"] = "IrAdmins" });
 
         using var configured = await host.Client.SendAsync(Request(
-            HttpMethod.Get, $"/api/reports/{SavedReportsListingDefinition.Name}/schema", "configured-admin"));
+            HttpMethod.Get, $"/api/reports/{SavedReportsListingDefinition.Name}/schema", "configured-admin"), TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.NotFound, configured.StatusCode);
 
         using var policyAdmin = await host.Client.SendAsync(Request(
-            HttpMethod.Get, $"/api/reports/{SavedReportsListingDefinition.Name}/schema", "policy-admin", roles: ["admins"]));
+            HttpMethod.Get, $"/api/reports/{SavedReportsListingDefinition.Name}/schema", "policy-admin", roles: ["admins"]), TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, policyAdmin.StatusCode);
         using var whoami = await host.Client.SendAsync(Request(
-            HttpMethod.Get, "/api/reports/whoami", "policy-admin", roles: ["admins"]));
+            HttpMethod.Get, "/api/reports/whoami", "policy-admin", roles: ["admins"]), TestContext.Current.CancellationToken);
         var identity = await ReadJson(whoami);
         Assert.Equal("policy", identity.GetProperty("administratorSource").GetString());
         Assert.True(identity.GetProperty("administratorsManagedByApplication").GetBoolean());
@@ -287,7 +287,7 @@ public sealed class InteractiveReportAuthorizationHttpTests
             reports.UseAdministrators((_, _) => throw new InvalidOperationException("directory offline")));
 
         using var response = await host.Client.SendAsync(Request(
-            HttpMethod.Get, $"/api/reports/{SavedReportsListingDefinition.Name}/schema", "anyone"));
+            HttpMethod.Get, $"/api/reports/{SavedReportsListingDefinition.Name}/schema", "anyone"), TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.InternalServerError, response.StatusCode);
         var problem = await ReadJson(response);
@@ -301,17 +301,17 @@ public sealed class InteractiveReportAuthorizationHttpTests
         const string administrators = "/api/reports/admin/administrators";
         await using var host = await Start(administrators: ["configured-admin"]);
         using var grant = await host.Client.SendAsync(Request(
-            HttpMethod.Put, administrators, "configured-admin", new { identities = new[] { "old-admin" } }));
+            HttpMethod.Put, administrators, "configured-admin", new { identities = new[] { "old-admin" } }), TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.NoContent, grant.StatusCode);
 
         using var replaced = await host.Client.SendAsync(Request(
             HttpMethod.Put,
             administrators,
             "configured-admin",
-            new { identities = new[] { " kept-admin ", "kept-admin", "new-admin" } }));
+            new { identities = new[] { " kept-admin ", "kept-admin", "new-admin" } }), TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.NoContent, replaced.StatusCode);
 
-        using var listed = await host.Client.SendAsync(Request(HttpMethod.Get, administrators, "configured-admin"));
+        using var listed = await host.Client.SendAsync(Request(HttpMethod.Get, administrators, "configured-admin"), TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, listed.StatusCode);
         var lists = await ReadJson(listed);
         Assert.False(lists.GetProperty("managedByApplication").GetBoolean());
@@ -319,28 +319,28 @@ public sealed class InteractiveReportAuthorizationHttpTests
         Assert.Equal(["kept-admin", "new-admin"], Strings(lists.GetProperty("database")));
 
         // The grants take effect immediately: a listed identity administers, a dropped one is hidden.
-        using var newAdmin = await host.Client.SendAsync(Request(HttpMethod.Get, administrators, "new-admin"));
+        using var newAdmin = await host.Client.SendAsync(Request(HttpMethod.Get, administrators, "new-admin"), TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, newAdmin.StatusCode);
-        using var oldAdmin = await host.Client.SendAsync(Request(HttpMethod.Get, administrators, "old-admin"));
+        using var oldAdmin = await host.Client.SendAsync(Request(HttpMethod.Get, administrators, "old-admin"), TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.NotFound, oldAdmin.StatusCode);
 
         // A malformed list changes nothing.
         using var missing = await host.Client.SendAsync(Request(
-            HttpMethod.Put, administrators, "configured-admin", new { }));
+            HttpMethod.Put, administrators, "configured-admin", new { }), TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.BadRequest, missing.StatusCode);
         Assert.Equal("IR-1406", (await ReadJson(missing)).GetProperty("code").GetString());
         using var blank = await host.Client.SendAsync(Request(
-            HttpMethod.Put, administrators, "configured-admin", new { identities = new[] { "fine", " " } }));
+            HttpMethod.Put, administrators, "configured-admin", new { identities = new[] { "fine", " " } }), TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.BadRequest, blank.StatusCode);
         Assert.Equal("IR-1402", (await ReadJson(blank)).GetProperty("code").GetString());
-        using var unchanged = await host.Client.SendAsync(Request(HttpMethod.Get, administrators, "configured-admin"));
+        using var unchanged = await host.Client.SendAsync(Request(HttpMethod.Get, administrators, "configured-admin"), TestContext.Current.CancellationToken);
         Assert.Equal(["kept-admin", "new-admin"], Strings((await ReadJson(unchanged)).GetProperty("database")));
 
         // Emptying the database list is allowed; configuration still names an administrator.
         using var cleared = await host.Client.SendAsync(Request(
-            HttpMethod.Put, administrators, "configured-admin", new { identities = Array.Empty<string>() }));
+            HttpMethod.Put, administrators, "configured-admin", new { identities = Array.Empty<string>() }), TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.NoContent, cleared.StatusCode);
-        using var afterClear = await host.Client.SendAsync(Request(HttpMethod.Get, administrators, "configured-admin"));
+        using var afterClear = await host.Client.SendAsync(Request(HttpMethod.Get, administrators, "configured-admin"), TestContext.Current.CancellationToken);
         Assert.Empty(Strings((await ReadJson(afterClear)).GetProperty("database")));
     }
 
@@ -364,7 +364,7 @@ public sealed class InteractiveReportAuthorizationHttpTests
             HttpMethod.Post,
             $"/api/reports/orders/saved",
             "callback-admin",
-            new { title = "Candidate", state = new { v = 3 } }));
+            new { title = "Candidate", state = new { v = 3 } }), TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.Created, save.StatusCode);
         var id = (await ReadJson(save)).GetProperty("id").GetInt64();
         while (seen.TryDequeue(out _)) { }
@@ -373,7 +373,7 @@ public sealed class InteractiveReportAuthorizationHttpTests
             HttpMethod.Put,
             $"/api/reports/{id}",
             "callback-admin",
-            new { isDefault = true }));
+            new { isDefault = true }), TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.OK, select.StatusCode);
         Assert.Equal(
@@ -447,7 +447,7 @@ public sealed class InteractiveReportAuthorizationHttpTests
                         },
                     },
                 },
-            }));
+            }), TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.Created, save.StatusCode);
         var saved = await ReadJson(save);
@@ -460,7 +460,7 @@ public sealed class InteractiveReportAuthorizationHttpTests
         using var load = await host.Client.SendAsync(Request(
             HttpMethod.Get,
             $"/api/reports/orders/{saved.GetProperty("id").GetInt64()}",
-            "ordinary-user"));
+            "ordinary-user"), TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, load.StatusCode);
         var loadedState = (await ReadJson(load)).GetProperty("result").GetProperty("document");
         Assert.Equal(
@@ -501,14 +501,14 @@ public sealed class InteractiveReportAuthorizationHttpTests
             HttpMethod.Post,
             $"/api/reports/orders/saved",
             "ordinary-user",
-            new { title = "Invalid after authorization", state = new { } }));
+            new { title = "Invalid after authorization", state = new { } }), TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.BadRequest, save.StatusCode);
         Assert.NotNull(proposedId);
         using var load = await host.Client.SendAsync(Request(
             HttpMethod.Get,
             $"/api/reports/orders/{proposedId}",
-            "ordinary-user"));
+            "ordinary-user"), TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.NotFound, load.StatusCode);
     }
 
@@ -540,22 +540,22 @@ public sealed class InteractiveReportAuthorizationHttpTests
             HttpMethod.Post,
             $"/api/reports/orders/saved",
             "ordinary-user",
-            new { title = "Original", state = new { v = 3, search = "untouched" } }));
+            new { title = "Original", state = new { v = 3, search = "untouched" } }), TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.Created, save.StatusCode);
         var id = (await ReadJson(save)).GetProperty("id").GetInt64();
         var store = host.Services.GetRequiredService<ISavedReportStore>();
-        var stateBefore = (await store.Get(id))!.StateJson;
+        var stateBefore = (await store.Get(id, TestContext.Current.CancellationToken))!.StateJson;
 
         using var update = await host.Client.SendAsync(Request(
             HttpMethod.Put,
             $"/api/reports/{id}",
             "ordinary-user",
-            new { title = "Client update" }));
+            new { title = "Client update" }), TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.OK, update.StatusCode);
         Assert.True(updateInspected);
         Assert.Equal("Server update", (await ReadJson(update)).GetProperty("title").GetString());
-        Assert.Equal(stateBefore, (await store.Get(id))!.StateJson);
+        Assert.Equal(stateBefore, (await store.Get(id, TestContext.Current.CancellationToken))!.StateJson);
     }
 
     [Fact]
@@ -578,7 +578,7 @@ public sealed class InteractiveReportAuthorizationHttpTests
             HttpMethod.Post,
             $"/api/reports/orders/saved",
             "ordinary-user",
-            new { title = "Escalated in stages", state = new { v = 3 } }));
+            new { title = "Escalated in stages", state = new { v = 3 } }), TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.Created, save.StatusCode);
         Assert.Equal(
@@ -606,12 +606,12 @@ public sealed class InteractiveReportAuthorizationHttpTests
             Owner = "ordinary-user",
             StateJson = "{\"search\":\"kept\",\"foreignShape\":{\"dropped\":true}}",
         };
-        await host.Services.GetRequiredService<ISavedReportStore>().Create(report);
+        await host.Services.GetRequiredService<ISavedReportStore>().Create(report, TestContext.Current.CancellationToken);
 
         using var load = await host.Client.SendAsync(Request(
             HttpMethod.Get,
             $"/api/reports/orders/{report.Id}",
-            "ordinary-user"));
+            "ordinary-user"), TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.OK, load.StatusCode);
         var state = (await ReadJson(load)).GetProperty("result").GetProperty("document");
@@ -628,20 +628,20 @@ public sealed class InteractiveReportAuthorizationHttpTests
             HttpMethod.Post,
             $"/api/reports/orders/saved",
             "ordinary-user",
-            new { title = "Mine", state = new { v = 3 } }));
+            new { title = "Mine", state = new { v = 3 } }), TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.Created, privateSave.StatusCode);
 
         using var globalSave = await host.Client.SendAsync(Request(
             HttpMethod.Post,
             $"/api/reports/orders/saved",
             "ordinary-user",
-            new { title = "Global", isGlobal = true, state = new { v = 3 } }));
+            new { title = "Global", isGlobal = true, state = new { v = 3 } }), TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.Forbidden, globalSave.StatusCode);
 
         using var listing = await host.Client.SendAsync(Request(
             HttpMethod.Get,
             $"/api/reports/{SavedReportsListingDefinition.Name}/schema",
-            "ordinary-user"));
+            "ordinary-user"), TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.NotFound, listing.StatusCode);
     }
 
@@ -658,14 +658,14 @@ public sealed class InteractiveReportAuthorizationHttpTests
             $"/api/reports/orders/saved",
             "not-listed",
             new { title = "Rejected", isGlobal = true, state = new { v = 3 } },
-            roles: ["release"]));
+            roles: ["release"]), TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.Forbidden, nonListed.StatusCode);
 
         using var restrictedAdmin = await host.Client.SendAsync(Request(
             HttpMethod.Post,
             $"/api/reports/orders/saved",
             "configured-admin",
-            new { title = "Restricted", isGlobal = true, state = new { v = 3 } }));
+            new { title = "Restricted", isGlobal = true, state = new { v = 3 } }), TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.Forbidden, restrictedAdmin.StatusCode);
 
         using var allowedAdmin = await host.Client.SendAsync(Request(
@@ -673,7 +673,7 @@ public sealed class InteractiveReportAuthorizationHttpTests
             $"/api/reports/orders/saved",
             "configured-admin",
             new { title = "Allowed", isGlobal = true, state = new { v = 3 } },
-            roles: ["release"]));
+            roles: ["release"]), TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.Created, allowedAdmin.StatusCode);
     }
 
@@ -695,7 +695,7 @@ public sealed class InteractiveReportAuthorizationHttpTests
             HttpMethod.Post,
             $"/api/reports/orders/saved",
             "native-admin",
-            new { title = "Native", isGlobal = true, state = new { v = 3 } }));
+            new { title = "Native", isGlobal = true, state = new { v = 3 } }), TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
         Assert.Equal(
@@ -731,14 +731,14 @@ public sealed class InteractiveReportAuthorizationHttpTests
             "/api/reports/orders/query",
             "query-user",
             new { v = 3 },
-            roles: ["query"]));
+            roles: ["query"]), TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, allowed.StatusCode);
 
         using var denied = await host.Client.SendAsync(Request(
             HttpMethod.Post,
             "/api/reports/orders/query",
             "other-user",
-            new { v = 3 }));
+            new { v = 3 }), TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.Forbidden, denied.StatusCode);
     }
 
@@ -758,7 +758,7 @@ public sealed class InteractiveReportAuthorizationHttpTests
             HttpMethod.Post,
             "/api/reports/orders/query",
             "query-user",
-            new { v = 3 }));
+            new { v = 3 }), TestContext.Current.CancellationToken);
 
         Assert.Equal(expected, response.StatusCode);
     }
@@ -780,7 +780,7 @@ public sealed class InteractiveReportAuthorizationHttpTests
         });
 
         using var response = await host.Client.SendAsync(Request(
-            HttpMethod.Get, "/api/reports/orders/schema", "policy-user"));
+            HttpMethod.Get, "/api/reports/orders/schema", "policy-user"), TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.InternalServerError, response.StatusCode);
         var problem = await ReadJson(response);
@@ -807,9 +807,9 @@ public sealed class InteractiveReportAuthorizationHttpTests
                  })
         {
             using var hidden = await host.Client.SendAsync(Request(
-                method, string.Format(path, hiddenId), "outsider", body));
+                method, string.Format(path, hiddenId), "outsider", body), TestContext.Current.CancellationToken);
             using var missing = await host.Client.SendAsync(Request(
-                method, string.Format(path, 987654321), "outsider", body));
+                method, string.Format(path, 987654321), "outsider", body), TestContext.Current.CancellationToken);
 
             Assert.Equal(HttpStatusCode.NotFound, hidden.StatusCode);
             Assert.Equal(HttpStatusCode.NotFound, missing.StatusCode);
@@ -828,14 +828,14 @@ public sealed class InteractiveReportAuthorizationHttpTests
             HttpMethod.Post,
             "/api/reports/orders/saved",
             "alice",
-            new { title = "Alice only", state = new { } }));
+            new { title = "Alice only", state = new { } }), TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.Created, save.StatusCode);
         var id = (await ReadJson(save)).GetProperty("id").GetInt64();
 
         using var hidden = await host.Client.SendAsync(Request(
-            HttpMethod.Get, $"/api/reports/orders/{id}", "bob"));
+            HttpMethod.Get, $"/api/reports/orders/{id}", "bob"), TestContext.Current.CancellationToken);
         using var missing = await host.Client.SendAsync(Request(
-            HttpMethod.Get, "/api/reports/orders/987654321", "bob"));
+            HttpMethod.Get, "/api/reports/orders/987654321", "bob"), TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.NotFound, hidden.StatusCode);
         Assert.Equal(HttpStatusCode.NotFound, missing.StatusCode);
@@ -850,9 +850,9 @@ public sealed class InteractiveReportAuthorizationHttpTests
             reports.UseAuthorization((request, _) => ValueTask.FromResult(
                 request.User.FindFirstValue(ClaimTypes.NameIdentifier) == "insider")));
 
-        using var insider = await host.Client.SendAsync(Request(HttpMethod.Get, "/api/reports", "insider"));
-        using var outsider = await host.Client.SendAsync(Request(HttpMethod.Get, "/api/reports", "outsider"));
-        using var anonymous = await host.Client.SendAsync(Request(HttpMethod.Get, "/api/reports", null));
+        using var insider = await host.Client.SendAsync(Request(HttpMethod.Get, "/api/reports", "insider"), TestContext.Current.CancellationToken);
+        using var outsider = await host.Client.SendAsync(Request(HttpMethod.Get, "/api/reports", "outsider"), TestContext.Current.CancellationToken);
+        using var anonymous = await host.Client.SendAsync(Request(HttpMethod.Get, "/api/reports", null), TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.OK, insider.StatusCode);
         Assert.Single((await ReadJson(insider)).EnumerateArray());
@@ -885,13 +885,13 @@ public sealed class InteractiveReportAuthorizationHttpTests
                 Content = new StringContent("{}", Encoding.UTF8, "text/plain"),
             };
             request.Headers.Add("X-Test-Identity", "anyone");
-            using var refused = await host.Client.SendAsync(request);
+            using var refused = await host.Client.SendAsync(request, TestContext.Current.CancellationToken);
 
             Assert.Equal(HttpStatusCode.UnsupportedMediaType, refused.StatusCode);
         }
 
         using var accepted = await host.Client.SendAsync(Request(
-            HttpMethod.Post, "/api/reports/orders/query", null, new { }));
+            HttpMethod.Post, "/api/reports/orders/query", null, new { }), TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, accepted.StatusCode);
     }
 
@@ -905,7 +905,7 @@ public sealed class InteractiveReportAuthorizationHttpTests
                 """{"activeTable":"a","tables":{"a":null}}""", Encoding.UTF8, "application/json"),
         };
 
-        using var response = await host.Client.SendAsync(request);
+        using var response = await host.Client.SendAsync(request, TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
         var error = await ReadJson(response);

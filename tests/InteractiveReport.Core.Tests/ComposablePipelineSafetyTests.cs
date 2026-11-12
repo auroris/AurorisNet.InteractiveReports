@@ -254,7 +254,7 @@ public sealed class ComposablePipelineSafetyTests : IClassFixture<SqliteE2EFixtu
         };
         var compiler = Compiler(definition, state, ReportSchema.Create("wide-aggregates", columns));
 
-        var raw = await compiler.Compile("wide", default);
+        var raw = await compiler.Compile("wide", TestContext.Current.CancellationToken);
         var exception = Assert.Throws<ReportValidationException>(() => compiler.CompleteForTarget(raw));
 
         Assert.Contains(exception.Errors, error =>
@@ -299,7 +299,7 @@ public sealed class ComposablePipelineSafetyTests : IClassFixture<SqliteE2EFixtu
         };
         var compiler = Compiler(definition, state, ReportSchema.Create("wide-median-helpers", columns));
 
-        var raw = await compiler.Compile("wide", default);
+        var raw = await compiler.Compile("wide", TestContext.Current.CancellationToken);
         var exception = Assert.Throws<ReportValidationException>(() => compiler.CompleteForTarget(raw));
 
         Assert.Contains(exception.Errors, error =>
@@ -340,7 +340,7 @@ public sealed class ComposablePipelineSafetyTests : IClassFixture<SqliteE2EFixtu
         };
         var compiler = Compiler(definition, state, ReportSchema.Create("wide-group", columns));
 
-        var exception = await Assert.ThrowsAsync<ReportValidationException>(() => compiler.Compile("wide", default));
+        var exception = await Assert.ThrowsAsync<ReportValidationException>(() => compiler.Compile("wide", TestContext.Current.CancellationToken));
 
         Assert.Contains(exception.Errors, error =>
             error.Message.Contains("grouped relation", StringComparison.Ordinal));
@@ -377,7 +377,7 @@ public sealed class ComposablePipelineSafetyTests : IClassFixture<SqliteE2EFixtu
         };
 
         var exception = await Assert.ThrowsAsync<ReportValidationException>(() =>
-            _executor.RefreshSchemaCaches(definition, state, NoParams));
+            _executor.RefreshSchemaCaches(definition, state, NoParams, TestContext.Current.CancellationToken));
 
         Assert.Contains(exception.Errors, error => error.Path == "activeTable");
     }
@@ -396,7 +396,7 @@ public sealed class ComposablePipelineSafetyTests : IClassFixture<SqliteE2EFixtu
         state.ActiveTable = "  DeFiNiTiOn  ";
 
         var exception = await Assert.ThrowsAsync<ReportValidationException>(() =>
-            _executor.Download(definition, state, NoParams));
+            _executor.Download(definition, state, NoParams, ct: TestContext.Current.CancellationToken));
 
         Assert.Contains(exception.Errors, error =>
             error.Path == "activeTable"
@@ -420,8 +420,8 @@ public sealed class ComposablePipelineSafetyTests : IClassFixture<SqliteE2EFixtu
                 values: [TestFixtures.Metric("ir1", "AMOUNT", AggregateFn.Sum)]),
         ]);
 
-        var query = await _executor.Query(definition, state, NoParams);
-        var export = await _executor.Download(definition, state, NoParams);
+        var query = await _executor.Query(definition, state, NoParams, TestContext.Current.CancellationToken);
+        var export = await _executor.Download(definition, state, NoParams, ct: TestContext.Current.CancellationToken);
 
         Assert.Equal(["A]B", "__count", "ir1"], query.Columns.Select(column => column.Name));
         Assert.Equal(4, query.TotalRows);
@@ -447,8 +447,8 @@ public sealed class ComposablePipelineSafetyTests : IClassFixture<SqliteE2EFixtu
                 values: [TestFixtures.Metric("ir1", "AMOUNT", AggregateFn.Sum)]),
         ]);
 
-        var query = await _executor.Query(definition, state, NoParams);
-        var export = await _executor.Download(definition, state, NoParams);
+        var query = await _executor.Query(definition, state, NoParams, TestContext.Current.CancellationToken);
+        var export = await _executor.Download(definition, state, NoParams, ct: TestContext.Current.CancellationToken);
 
         Assert.Equal(["A?B", "__count", "ir1"], query.Columns.Select(column => column.Name));
         Assert.Equal(4, query.TotalRows);
@@ -498,8 +498,8 @@ public sealed class ComposablePipelineSafetyTests : IClassFixture<SqliteE2EFixtu
                     new TestFixtures.StageLayer { Columns = ["ir2"] }),
             ]);
 
-        var query = await _executor.Query(definition, state, NoParams);
-        var export = await _executor.Download(definition, state, NoParams);
+        var query = await _executor.Query(definition, state, NoParams, TestContext.Current.CancellationToken);
+        var export = await _executor.Download(definition, state, NoParams, ct: TestContext.Current.CancellationToken);
 
         Assert.Equal(
             "ir1",
@@ -583,7 +583,7 @@ public sealed class ComposablePipelineSafetyTests : IClassFixture<SqliteE2EFixtu
             },
         };
 
-        var result = await _executor.Query(definition, State("child"), NoParams);
+        var result = await _executor.Query(definition, State("child"), NoParams, TestContext.Current.CancellationToken);
 
         Assert.Equal(10, result.TotalRows);
         Assert.DoesNotContain(result.Ignored, item =>
@@ -591,7 +591,7 @@ public sealed class ComposablePipelineSafetyTests : IClassFixture<SqliteE2EFixtu
         Assert.NotNull(result.Document!.Tables!["parent"].Schema);
 
         var exception = await Assert.ThrowsAsync<ReportValidationException>(() =>
-            _executor.Query(definition, State("parent"), NoParams));
+            _executor.Query(definition, State("parent"), NoParams, TestContext.Current.CancellationToken));
         Assert.Contains(exception.Errors, error =>
             error.Path == "tables.parent.composables[0].highlights[0].expr"
             && error.Message.Contains("UNKNOWN_COLUMN", StringComparison.Ordinal));
@@ -639,7 +639,7 @@ public sealed class ComposablePipelineSafetyTests : IClassFixture<SqliteE2EFixtu
             },
         };
 
-        var result = await _executor.Query(definition, state, NoParams);
+        var result = await _executor.Query(definition, state, NoParams, TestContext.Current.CancellationToken);
 
         Assert.Equal(3, result.TotalRows);
         Assert.All(result.Rows, row => Assert.Contains(
@@ -659,7 +659,7 @@ public sealed class ComposablePipelineSafetyTests : IClassFixture<SqliteE2EFixtu
             .ToList();
         var compiler = PivotCompiler(definition, groups);
 
-        var plan = compiler.CompleteForTarget(await compiler.Compile("pivot", default));
+        var plan = compiler.CompleteForTarget(await compiler.Compile("pivot", TestContext.Current.CancellationToken));
 
         Assert.Equal(5, plan.Relation.Schema.Count);
     }

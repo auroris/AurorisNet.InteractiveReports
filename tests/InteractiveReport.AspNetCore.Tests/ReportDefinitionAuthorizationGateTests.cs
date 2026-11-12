@@ -22,7 +22,7 @@ public sealed class ReportDefinitionAuthorizationGateTests
         var store = new GatedDefinitionStore();
         var service = new ReportAuthorizationService(new InteractiveReportLogging());
 
-        var resolved = await service.ResolveDefinition("orders", Anonymous(store));
+        var resolved = await service.ResolveDefinition("orders", Anonymous(store), TestContext.Current.CancellationToken);
 
         Assert.Equal(ReportAuthorizationFailureKind.Unauthenticated, resolved.Failure?.Kind);
         Assert.Null(resolved.Definition);
@@ -36,7 +36,7 @@ public sealed class ReportDefinitionAuthorizationGateTests
         var store = new GatedDefinitionStore();
         var service = new ReportAuthorizationService(new InteractiveReportLogging());
 
-        var resolved = await service.ResolveDefinition("orders", Authenticated(store));
+        var resolved = await service.ResolveDefinition("orders", Authenticated(store), TestContext.Current.CancellationToken);
 
         Assert.Null(resolved.Failure);
         Assert.Equal("orders", resolved.Definition?.Name);
@@ -53,7 +53,7 @@ public sealed class ReportDefinitionAuthorizationGateTests
         var store = new GatedDefinitionStore { FailDefinitionLoad = true };
         var service = new ReportAuthorizationService(new InteractiveReportLogging());
 
-        var resolved = await service.ResolveDefinition("orders", Anonymous(store));
+        var resolved = await service.ResolveDefinition("orders", Anonymous(store), TestContext.Current.CancellationToken);
 
         Assert.Equal(ReportAuthorizationFailureKind.Unauthenticated, resolved.Failure?.Kind);
         Assert.Equal(0, store.DefinitionLoads);

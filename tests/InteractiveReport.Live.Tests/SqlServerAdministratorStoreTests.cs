@@ -18,7 +18,7 @@ public sealed class SqlServerAdministratorStoreTests : AdministratorStoreCorpus
     protected override SqlAdministratorStore CreateStore()
     {
         var connectionString = ConnectionString;
-        Skip.If(
+        Assert.SkipWhen(
             string.IsNullOrWhiteSpace(connectionString),
             "set IR_TEST_SQLSERVER to run live SQL Server administrator-store verification");
 

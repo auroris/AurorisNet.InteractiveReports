@@ -30,8 +30,8 @@ public sealed class ConfiguredReportDocumentStartupTests
                   }
                 }
                 """;
-            await File.WriteAllTextAsync(Path.Combine(documents, "a.json"), body.Replace("TITLE", "A"));
-            await File.WriteAllTextAsync(Path.Combine(documents, "b.json"), body.Replace("TITLE", "B"));
+            await File.WriteAllTextAsync(Path.Combine(documents, "a.json"), body.Replace("TITLE", "A"), TestContext.Current.CancellationToken);
+            await File.WriteAllTextAsync(Path.Combine(documents, "b.json"), body.Replace("TITLE", "B"), TestContext.Current.CancellationToken);
 
             var builder = WebApplication.CreateBuilder(new WebApplicationOptions
             {
@@ -55,7 +55,7 @@ public sealed class ConfiguredReportDocumentStartupTests
                 .AddConnection("Data", _ => new SqliteConnection("Data Source=:memory:"));
 
             await using var app = builder.Build();
-            var error = await Assert.ThrowsAsync<InvalidOperationException>(() => app.StartAsync());
+            var error = await Assert.ThrowsAsync<InvalidOperationException>(() => app.StartAsync(TestContext.Current.CancellationToken));
 
             Assert.Contains("only one configured report document may be marked as default", error.Message);
             Assert.Contains("a.json", error.Message);

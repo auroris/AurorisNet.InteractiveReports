@@ -36,7 +36,7 @@ public sealed class PivotTotalsCompatibilityTests : IClassFixture<SqliteE2EFixtu
         ]);
 
         var exception = await Assert.ThrowsAsync<ReportValidationException>(
-            () => _executor.Query(Definition, document, NoParams));
+            () => _executor.Query(Definition, document, NoParams, TestContext.Current.CancellationToken));
 
         Assert.Contains(exception.Errors, error =>
             error.Path == "tables.result.composables[1].totals"
@@ -57,7 +57,7 @@ public sealed class PivotTotalsCompatibilityTests : IClassFixture<SqliteE2EFixtu
         ]);
 
         var exception = await Assert.ThrowsAsync<ReportValidationException>(
-            () => _executor.Query(Definition, document, NoParams));
+            () => _executor.Query(Definition, document, NoParams, TestContext.Current.CancellationToken));
 
         Assert.Contains(exception.Errors, error =>
             error.Path == "tables.result.composables[1].totals"
@@ -82,7 +82,7 @@ public sealed class PivotTotalsCompatibilityTests : IClassFixture<SqliteE2EFixtu
             Pivot(totals: true),
         ]);
 
-        var result = await _executor.Query(definition, document, NoParams);
+        var result = await _executor.Query(definition, document, NoParams, TestContext.Current.CancellationToken);
 
         Assert.NotEmpty(result.Rows);
         Assert.NotEmpty(result.Aggregates);
@@ -98,7 +98,7 @@ public sealed class PivotTotalsCompatibilityTests : IClassFixture<SqliteE2EFixtu
         document.Search = "Acme";
 
         var exception = await Assert.ThrowsAsync<ReportValidationException>(
-            () => _executor.Query(Definition, document, NoParams));
+            () => _executor.Query(Definition, document, NoParams, TestContext.Current.CancellationToken));
 
         Assert.Contains(exception.Errors, error =>
             error.Path == "tables.result.composables[0].totals"
@@ -155,7 +155,7 @@ public sealed class PivotTotalsCompatibilityTests : IClassFixture<SqliteE2EFixtu
             });
 
         var exception = await Assert.ThrowsAsync<ReportValidationException>(
-            () => compiler.Compile("result", default));
+            () => compiler.Compile("result", TestContext.Current.CancellationToken));
 
         Assert.Equal(0, discoveryCalls);
         Assert.Contains(exception.Errors, error =>
@@ -185,7 +185,7 @@ public sealed class PivotTotalsCompatibilityTests : IClassFixture<SqliteE2EFixtu
         ]);
 
         var exception = await Assert.ThrowsAsync<ReportValidationException>(
-            () => _executor.Query(Definition, document, NoParams));
+            () => _executor.Query(Definition, document, NoParams, TestContext.Current.CancellationToken));
 
         var error = Assert.Single(exception.Errors);
         Assert.Equal("tables.result.composables[0].totals", error.Path);
@@ -216,7 +216,7 @@ public sealed class PivotTotalsCompatibilityTests : IClassFixture<SqliteE2EFixtu
         ]);
 
         var exception = await Assert.ThrowsAsync<ReportValidationException>(
-            () => _executor.Query(definition, document, NoParams));
+            () => _executor.Query(definition, document, NoParams, TestContext.Current.CancellationToken));
 
         var error = Assert.Single(exception.Errors);
         Assert.Equal("tables.result.composables[0].totals", error.Path);
@@ -245,7 +245,7 @@ public sealed class PivotTotalsCompatibilityTests : IClassFixture<SqliteE2EFixtu
             },
         ]);
 
-        var result = await _executor.Query(Definition, document, NoParams);
+        var result = await _executor.Query(Definition, document, NoParams, TestContext.Current.CancellationToken);
 
         Assert.Equal(5200d, Convert.ToDouble(result.Aggregates[shipped]["avg"]));
         Assert.True(result.Aggregates[shipped].ContainsKey("sum"));
@@ -279,7 +279,7 @@ public sealed class PivotTotalsCompatibilityTests : IClassFixture<SqliteE2EFixtu
             },
         };
 
-        var result = await _executor.Query(Definition, document, NoParams);
+        var result = await _executor.Query(Definition, document, NoParams, TestContext.Current.CancellationToken);
 
         var shipped = TestFixtures.PivotCellId("result", "ir9", "SHIPPED");
         Assert.Equal(["CUSTOMER", shipped], result.Columns.Select(column => column.Name));

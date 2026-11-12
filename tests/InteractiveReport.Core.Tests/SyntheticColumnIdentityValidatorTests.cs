@@ -160,7 +160,7 @@ public sealed class SyntheticColumnIdentityValidatorTests : IClassFixture<Sqlite
         };
 
         var exception = await Assert.ThrowsAsync<ReportValidationException>(() =>
-            _executor.Query(Definition, document, NoParams));
+            _executor.Query(Definition, document, NoParams, TestContext.Current.CancellationToken));
 
         Assert.Equal(
             [
@@ -300,7 +300,7 @@ public sealed class SyntheticColumnIdentityValidatorTests : IClassFixture<Sqlite
         };
 
         var exception = await Assert.ThrowsAsync<ReportValidationException>(() =>
-            _executor.Query(Definition, document, NoParams));
+            _executor.Query(Definition, document, NoParams, TestContext.Current.CancellationToken));
 
         var error = Assert.Single(exception.Errors);
         var computedIndex = computedStoredFirst ? 0 : 1;
@@ -358,7 +358,7 @@ public sealed class SyntheticColumnIdentityValidatorTests : IClassFixture<Sqlite
         };
 
         var exception = await Assert.ThrowsAsync<ReportValidationException>(() =>
-            _executor.Download(Definition, document, NoParams));
+            _executor.Download(Definition, document, NoParams, ct: TestContext.Current.CancellationToken));
 
         var error = Assert.Single(exception.Errors);
         Assert.Equal("tables.dormant.composables[0].values[0].id", error.Path);
