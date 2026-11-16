@@ -34,7 +34,7 @@ jobs:
     env:
       ContinuousIntegrationBuild: 'true'
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
@@ -80,7 +80,7 @@ jobs:
     steps:
       # Only the project files are needed, to tell shipped packages from sample and test ones.
       # Checked out before the merge, which deletes the pull request's branch.
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           sparse-checkout: src
           persist-credentials: false
