@@ -1,0 +1,144 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: pwsh
+
+env:
+  DOTNET_CLI_TELEMETRY_OPTOUT: '1'
+  DOTNET_NOLOGO: '1'
+
+jobs:
+  # The same pipeline as the Release workflow (scripts/release.ps1 wraps scripts/pack.ps1),
+  # on the same operating system, without a version: build the browser bundles and packaged
+  # help, run the client unit tests and the Core and ASP.NET Core test projects, pack the
+  # five packages, then run the browser-server and documentation tests. The live-database
+  # suite needs the IR_TEST_* connection strings and skips itself here.
+  test:
+    name: Build, test and pack
+    runs-on: windows-latest
+    timeout-minutes: 30
+    env:
+      ContinuousIntegrationBuild: 'true'
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6
+        with:
+          dotnet-version: '10.0.x'
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: '24'
+          cache: npm
+
+      - name: Install client dependencies
+        run: npm ci
+
+      - name: Install browser for packaged help screenshots
+        run: npx playwright install chromium
+
+      - name: Build, test and pack
+        run: ./scripts/pack.ps1 -SkipInstall
+
+      - name: Browser-server tests
+        run: npm run test:server
+
+      - name: Check documentation
+        run: npm run test:docs
+
+  # Dependabot pull requests that pass are merged, and the Release workflow is started on
+  # main so the update ships to GitHub and NuGet.org. Workflows triggered by Dependabot get
+  # a read-only token unless the job asks for more.
+  dependabot:
+    name: Merge Dependabot update and release
+    needs: test
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.event.pull_request.user.login == 'dependabot[bot]' &&
+      github.repository == 'auroris/Interactive-Reports'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      actions: write
+    steps:
+      # Only the project files are needed, to tell shipped packages from sample and test ones.
+      # Checked out before the merge, which deletes the pull request's branch.
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          sparse-checkout: src
+          persist-credentials: false
+
+      - name: Read Dependabot metadata
+        id: metadata
+        uses: dependabot/fetch-metadata@25dd0e34f4fe68f24cc83900b1fe3fe149efef98 # v3.1.0
+
+      - name: Merge and release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          UPDATE_TYPE: ${{ steps.metadata.outputs.update-type }}
+          ECOSYSTEM: ${{ steps.metadata.outputs.package-ecosystem }}
+          DEPENDENCIES: ${{ steps.metadata.outputs.dependency-names }}
+        run: |
+          if ($env:UPDATE_TYPE -eq 'version-update:semver-major') {
+            $message = 'CI passed, but major version updates are left for manual review. ' +
+              'After merging, start the Release NuGet packages workflow by hand if the change should ship.'
+            gh pr comment $env:PR_NUMBER --body $message
+            if ($LASTEXITCODE -ne 0) { throw 'Could not comment on the pull request.' }
+            return
+          }
+
+          $updated = @($env:DEPENDENCIES.Split(',') | ForEach-Object Trim | Where-Object { $_ })
+          switch ($env:ECOSYSTEM) {
+            'nuget' {
+              # Packages referenced by the five packable projects under src/ reach consumers;
+              # packages that only the samples and tests reference do not.
+              $shippedPackages = @(Get-ChildItem src -Recurse -Filter *.csproj | ForEach-Object {
+                ([xml](Get-Content $_.FullName -Raw)).SelectNodes('//PackageReference/@Include') | ForEach-Object Value
+              })
+              if ($shippedPackages.Count -eq 0) { throw 'No package references found under src/; is the checkout complete?' }
+              $shipped = @($updated | Where-Object { $shippedPackages -contains $_ })
+            }
+            { $_ -in 'npm', 'npm_and_yarn' } {
+              # The browser bundles and packaged help are built from npm packages and embedded in
+              # AurorisNet.InteractiveReports. Test tooling and the in-browser demo are not shipped.
+              $notShipped = '@playwright/test', 'playwright', 'happy-dom', 'sql.js'
+              $shipped = @($updated | Where-Object { $notShipped -notcontains $_ })
+            }
+            default {
+              $shipped = @()
+            }
+          }
+
+          gh pr merge $env:PR_NUMBER --repo $env:GH_REPO --squash --delete-branch
+          if ($LASTEXITCODE -ne 0) { throw 'Could not merge the pull request.' }
+
+          if ($shipped.Count -eq 0) {
+            Write-Host "Merged a $env:ECOSYSTEM update of $($updated -join ', '); nothing shipped changes, so no release."
+            return
+          }
+
+          # A minor NuGet dependency update may add surface area that consumers see; a patch
+          # does not, and npm updates only change the embedded browser code and help page.
+          $bump = if ($env:ECOSYSTEM -eq 'nuget' -and $env:UPDATE_TYPE -eq 'version-update:semver-minor') { 'minor' } else { 'patch' }
+          Write-Host "Starting the Release NuGet packages workflow on main with a $bump version bump for: $($shipped -join ', ')"
+          gh workflow run release.yml --ref main -f bump=$bump -f publish_to_nuget=true
+          if ($LASTEXITCODE -ne 0) { throw 'Could not start the Release NuGet packages workflow.' }

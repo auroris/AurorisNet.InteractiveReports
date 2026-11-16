@@ -59,27 +59,37 @@ README changes reach nuget.org when a new package version is published.
 
 ## Publishing a release from GitHub
 
-The [release workflow](../.github/workflows/release.yml) is **manual only**: pushes,
-tags, and pull requests do not trigger it. Once the workflow is on the repository's
-default branch, open **Actions → Release NuGet packages → Run workflow**:
+The [release workflow](../.github/workflows/release.yml) runs only when it is started:
+by hand from the Actions tab, or by the CI workflow after it merges a Dependabot update
+(see [Automatic dependency updates and releases](#automatic-dependency-updates-and-releases)).
+Pushes, tags, and pull requests never trigger it directly. Once the workflow is on the
+repository's default branch, open **Actions → Release NuGet packages → Run workflow**:
 
 1. Select the branch or tag to release.
-2. Enter a semantic version such as `1.0.3` or `1.0.3-rc.1`, or leave it blank to use
-   `Version` from `Directory.Build.props` (currently `1.0.2`). An override applies
-   to every package and its internal dependencies without editing the repository.
+2. Enter a semantic version such as `1.0.3` or `1.0.3-rc.1`, or leave it blank and pick a
+   **bump** (`patch` or `minor`) to increment the latest stable `v*` tag. The version
+   applies to every package and its internal dependencies without editing the repository.
 3. Leave **Also publish the packages to nuget.org** unchecked to create just the
    GitHub Release, or check it after configuring Trusted Publishing below.
-4. Run the workflow. It installs .NET 10, Node.js 24, and Chromium on Windows, then
-   runs `scripts/release.ps1` with the build and test stages enabled, plus the
-   documentation checks.
+4. Run the workflow. A first job validates the version and rejects an existing tag. The
+   build job then installs .NET 10, Node.js 24, and Chromium on Windows and runs
+   `scripts/release.ps1` with the build and test stages enabled, plus the documentation
+   checks.
+
+An optional `v` prefix is accepted. Versions use `MAJOR.MINOR.PATCH`, optionally followed
+by a prerelease suffix; build metadata (`+...`) is not supported. Numeric version components
+must be between 0 and 65534 to fit .NET assembly versions. Existing tags are rejected. A blank
+version bumps the highest `vMAJOR.MINOR.PATCH` tag; prerelease tags are ignored when choosing
+it. `Directory.Build.props` no longer supplies release versions: its `Version` is the
+development placeholder `0.0.0-dev`, which local builds and packs use unless a version is
+passed explicitly.
 
 Every successful build uploads an Actions artifact containing the five `.nupkg`
 files, five `.snupkg` symbol packages, and `SHA256SUMS.txt`. The next job verifies
 those checksums and publishes a GitHub Release tagged `v<version>` at the exact
 commit that was built, with generated release notes and all eleven files attached.
-Versions containing a prerelease suffix produce GitHub prereleases. An existing tag
-must point to the same commit; an existing release is never overwritten. Use a new
-version for a new release.
+Versions containing a prerelease suffix produce GitHub prereleases. Published releases
+and tags are never overwritten by this workflow; use a new version for a new release.
 
 The optional NuGet job runs after the GitHub Release and publishes the same packages
 and their symbols. If NuGet publishing fails, the GitHub Release and Actions artifact
@@ -113,11 +123,57 @@ to exchange its GitHub identity for a short-lived publishing key.
 
 On Windows, `scripts/release.ps1` (also `npm run release:nuget`) runs the pack pipeline and drops a
 complete, versioned package set into `releases/<version>/`: the five `.nupkg` files,
-their `.snupkg` symbol packages, and a `SHA256SUMS.txt` manifest. The version comes
-from `Directory.Build.props`; pass `-Version 1.0.0-rc.1` to override it for one run,
-`-SkipTests` to pack without the test layers, and `-Force` to replace a folder that
-already holds packages. The `releases/` folder is git-ignored. Nothing is pushed:
-publishing is a manual `dotnet nuget push releases/<version>/*.nupkg`.
+their `.snupkg` symbol packages, and a `SHA256SUMS.txt` manifest. Without `-Version`,
+the packages carry the development placeholder `0.0.0-dev` from `Directory.Build.props`;
+pass `-Version 1.0.3` or `-Version 1.0.0-rc.1` for a real one, `-SkipTests` to pack
+without the test layers, and `-Force` to replace a folder that already holds packages.
+The `releases/` folder is git-ignored. Nothing is pushed: publishing is a manual
+`dotnet nuget push releases/<version>/*.nupkg`.
+
+## Automatic dependency updates and releases
+
+[Dependabot](../.github/dependabot.yml) checks NuGet packages daily, so a new .NET
+servicing release is picked up within a day, and npm packages and GitHub Actions weekly.
+It opens grouped pull requests. For NuGet: one for the .NET platform packages
+(`Microsoft.Extensions.*`, `Microsoft.AspNetCore.*`, `Microsoft.Data.Sqlite`, `System.*`,
+the primary dependency), one for GraphQL.NET, one for test-only packages, and one for
+everything else. For npm: one for the packages bundled into the browser client or used
+to build the packaged help (esbuild, chart.js, big.js, intl-messageformat, marked, sharp),
+one for test tooling (Playwright, happy-dom), and one for the demo's sql.js. Workflow
+actions get one pull request. The platform packages stay on the current .NET major;
+Dependabot never proposes a major update of them.
+
+The [CI workflow](../.github/workflows/ci.yml) runs the release pipeline without a
+version on Windows for every pull request and for pushes to `main`: the client build,
+the client unit tests, the Core and ASP.NET Core test projects, `dotnet pack`, and the
+browser-server and documentation tests. The live-database suite skips itself because no
+`IR_TEST_*` connection string is set. For a Dependabot pull request that passes, the
+final job:
+
+1. Squash-merges the pull request into `main` and deletes the branch.
+2. Starts the Release NuGet packages workflow on `main` with a blank version and
+   nuget.org publishing enabled. A minor update of a NuGet package referenced by one of
+   the five packable projects bumps the minor version; patch updates, and every npm
+   update, bump the patch version. The release then runs exactly as a manual one.
+
+No release is started when nothing shipped changes: packages that only the samples or
+tests reference, npm test tooling, the demo's sql.js, and workflow actions. Which NuGet
+packages ship is read from the project files under `src/` at merge time, so adding a
+package to a library needs no workflow change. Major updates of packages other than the
+.NET platform still open pull requests and run CI, but are left for manual review with a
+comment explaining why; after merging one by hand, start the release workflow yourself
+if it should ship.
+
+Dependabot workflows run with a read-only token, so the merge job requests `contents`,
+`pull-requests` and `actions` write permissions explicitly. Starting the release workflow
+through `workflow_dispatch` is the one way a workflow can trigger another with the built-in
+token, which is why CI does not rely on a push trigger (a merge made with that token also
+starts no CI run on `main`). Several updates merged close together each queue a release;
+GitHub keeps one pending release run and cancels the ones between, and the last run still
+ships everything that was merged.
+
+To pause automation, remove or edit `.github/dependabot.yml`; to keep the updates but review
+them yourself, delete the `dependabot` job from `ci.yml`.
 
 ## Documentation assets
 

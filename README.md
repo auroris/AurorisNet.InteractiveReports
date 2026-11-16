@@ -111,7 +111,7 @@ data-source choices, persistence, authorization, and the next integration steps.
 | [Authorization](docs/AUTHORIZATION.md) | The action and resource model, row restrictions with `{{RowRestriction}}`, the three integration styles, administrator resolution, and denial behaviour. |
 | [GraphQL adapter](docs/GRAPHQL.md) | The optional query-only transport for saved reports. |
 | [Architecture](docs/ARCHITECTURE.md) | System boundaries, package structure, report planning and execution, database integration, authorization, persistence, and browser responsibilities. |
-| [Developing](docs/DEVELOPING.md) | Building the client, running the test layers, packing, and regenerating documentation screenshots. |
+| [Developing](docs/DEVELOPING.md) | Building the client, running the test layers, packing, publishing releases, the Dependabot release automation, and regenerating documentation screenshots. |
 | [Testing](docs/TESTING.md) | The everyday suite, browser automation, and live-dialect verification. |
 
 ## Developing
@@ -135,6 +135,9 @@ Maintainers can run **Actions → Release NuGet packages → Run workflow** to b
 test all five packages and publish a GitHub Release with packages, symbols, and
 checksums. Publishing to nuget.org is an optional workflow input; see
 [Publishing a release](docs/DEVELOPING.md#publishing-a-release-from-github) for setup.
+Dependabot keeps the dependencies current: CI tests each update, merges it, and starts
+that release workflow, so new packages reach GitHub and nuget.org without manual steps;
+see [Automatic dependency updates and releases](docs/DEVELOPING.md#automatic-dependency-updates-and-releases).
 
 ## License
 

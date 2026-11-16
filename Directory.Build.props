@@ -4,7 +4,10 @@
        src\ projects are packable (samples and tests set IsPackable=false or are never
        packed); the metadata is harmless elsewhere. -->
   <PropertyGroup>
-    <Version>1.0.2</Version>
+    <!-- Development placeholder. Released packages get their version from the Release workflow
+         (.github/workflows/release.yml), which bumps the latest v* tag or takes an explicit
+         version and passes it to dotnet pack as -p:Version. -->
+    <Version>0.0.0-dev</Version>
     <Authors>auroris</Authors>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageProjectUrl>https://github.com/auroris/Interactive-Reports</PackageProjectUrl>
