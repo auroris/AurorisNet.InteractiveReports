@@ -29,7 +29,7 @@
     "release:nuget": "pwsh scripts/release.ps1"
   },
   "devDependencies": {
-    "@playwright/test": "^1.62.1",
+    "@playwright/test": "^1.65.0",
     "chart.js": "^4.5.1",
     "esbuild": "^0.28.1",
     "happy-dom": "^20.11.1",
