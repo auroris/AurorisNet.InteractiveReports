@@ -162,7 +162,8 @@ packages ship is read from the project files under `src/` at merge time, so addi
 package to a library needs no workflow change. Major updates of packages other than the
 .NET platform still open pull requests and run CI, but are left for manual review with a
 comment explaining why; after merging one by hand, start the release workflow yourself
-if it should ship.
+if it should ship. Major updates of workflow actions merge automatically: the CI run that
+approves them already used the updated actions.
 
 Dependabot workflows run with a read-only token, so the merge job requests `contents`,
 `pull-requests` and `actions` write permissions explicitly. Starting the release workflow
