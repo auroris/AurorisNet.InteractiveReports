@@ -38,7 +38,7 @@
   },
   "dependencies": {
     "big.js": "7.0.1",
-    "intl-messageformat": "11.2.14",
+    "intl-messageformat": "12.1.5",
     "sql.js": "^1.16.0"
   }
 }
