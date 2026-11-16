@@ -14,6 +14,7 @@
     <RepositoryUrl>https://github.com/auroris/Interactive-Reports</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
     <PackageTags>reporting;interactive-report;apex;grid;sql;aspnetcore;umbraco</PackageTags>
+    <PackageIcon>icon.png</PackageIcon>
 
     <!-- Source Link: the .NET 8+ SDK embeds GitHub source-link support natively. -->
     <PublishRepositoryUrl>true</PublishRepositoryUrl>
@@ -30,5 +31,10 @@
          (CS1570). -->
     <NoWarn>$(NoWarn);CS1591;CS1573;CS1570</NoWarn>
   </PropertyGroup>
+
+  <!-- One icon for the whole package family; the SVG beside it is the editable source. -->
+  <ItemGroup>
+    <None Include="$(MSBuildThisFileDirectory)docs/images/icon.png" Pack="true" PackagePath="/" Visible="false" />
+  </ItemGroup>
 
 </Project>
