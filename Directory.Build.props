@@ -10,8 +10,8 @@
     <Version>0.0.0-dev</Version>
     <Authors>auroris</Authors>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
-    <PackageProjectUrl>https://github.com/auroris/Interactive-Reports</PackageProjectUrl>
-    <RepositoryUrl>https://github.com/auroris/Interactive-Reports</RepositoryUrl>
+    <PackageProjectUrl>https://github.com/auroris/AurorisNet.InteractiveReports</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/auroris/AurorisNet.InteractiveReports</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
     <PackageTags>reporting;interactive-report;apex;grid;sql;aspnetcore;umbraco</PackageTags>
     <PackageIcon>icon.png</PackageIcon>
