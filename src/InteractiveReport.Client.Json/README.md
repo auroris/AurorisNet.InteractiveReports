@@ -1,57 +1,30 @@
 # AurorisNet.InteractiveReports
 
-Oracle APEX-style interactive reports for ASP.NET Core. Define a report with a
-`SELECT`; users can search, filter, sort, group, pivot, chart, highlight, and save
-their view of the data.
+Oracle APEX-style interactive reports for ASP.NET Core: a developer configures a `SELECT`, and users search, filter, sort, break, compute, highlight, group, pivot, chart, save and download the result.
 
-**Start here for interactive reports in a browser.** This package supplies the
-report viewer, administration pages, embeddable `<interactive-report>` element,
-and REST API. The browser assets are included; your application needs no Node.js
-installation or front-end build.
+![MIT license](https://raw.githubusercontent.com/auroris/AurorisNet.Build/main/badges/license-mit.svg)
+![.NET 8](https://raw.githubusercontent.com/auroris/AurorisNet.Build/main/badges/dotnet-8.svg)
+![.NET 10](https://raw.githubusercontent.com/auroris/AurorisNet.Build/main/badges/dotnet-10.svg)
+![Windows](https://raw.githubusercontent.com/auroris/AurorisNet.Build/main/badges/windows.svg)
+![Linux](https://raw.githubusercontent.com/auroris/AurorisNet.Build/main/badges/linux.svg)
+![Databases](https://raw.githubusercontent.com/auroris/AurorisNet.Build/main/badges/databases.svg)
+[![Live demo](https://raw.githubusercontent.com/auroris/AurorisNet.Build/main/badges/demo.svg)](https://interactive-report.pages.dev/)
 
-[![MIT license](https://raw.githubusercontent.com/auroris/Interactive-Reports/main/docs/images/badge-license.svg)](https://github.com/auroris/Interactive-Reports/blob/main/LICENSE)
-![.NET 8](https://raw.githubusercontent.com/auroris/Interactive-Reports/main/docs/images/badge-dotnet.svg)
-![.NET 10](https://raw.githubusercontent.com/auroris/Interactive-Reports/main/docs/images/badge-dotnet-10.svg)
-![Windows supported](https://raw.githubusercontent.com/auroris/Interactive-Reports/main/docs/images/badge-windows.svg)
-![Linux supported](https://raw.githubusercontent.com/auroris/Interactive-Reports/main/docs/images/badge-linux.svg)
-![Databases](https://raw.githubusercontent.com/auroris/Interactive-Reports/main/docs/images/badge-databases.svg)
-[![Live Demo](https://raw.githubusercontent.com/auroris/Interactive-Reports/main/docs/images/badge-demo.svg)](https://interactive-report.pages.dev/)
+![An interactive report: toolbar, settings chips, a control break by region, a highlighted cell, a computed column and the pager](https://raw.githubusercontent.com/auroris/AurorisNet.InteractiveReports/main/docs/images/hero.png)
 
-![Interactive report with a toolbar, control break, highlighted cell, computed column, and pager](https://raw.githubusercontent.com/auroris/Interactive-Reports/main/docs/images/hero.png)
-
-**[Try the interactive demo](https://interactive-report.pages.dev/)**
+This is the package to start with. It adds the REST API, the packaged viewer and administration pages, and the `<interactive-report>` browser element. The browser bundle is embedded, so the application needs no Node.js and no front-end build. Try the [live demo](https://interactive-report.pages.dev/).
 
 ## Install
 
-In an ASP.NET Core application targeting .NET 8 or later:
+In an ASP.NET Core application that targets .NET 8 or later:
 
 ```sh
 dotnet add package AurorisNet.InteractiveReports
 ```
 
-NuGet also installs `AurorisNet.InteractiveReports.AspNetCore` and
-`AurorisNet.InteractiveReports.Core`. You do not need to add them separately.
-Install the ADO.NET driver for your database in the host application: SQLite,
-SQL Server, PostgreSQL, and Oracle are supported.
+The package brings in `AurorisNet.InteractiveReports.AspNetCore` and `AurorisNet.InteractiveReports.Core`. The application references the ADO.NET driver of its database: SQL Server, PostgreSQL, Oracle and SQLite are supported.
 
-## How the packages fit together
-
-| Package | Role | Installed with this package? |
-|---|---|---|
-| [AurorisNet.InteractiveReports.AspNetCore](https://www.nuget.org/packages/AurorisNet.InteractiveReports.AspNetCore/) | Server configuration, authorization, saved reports, and the shared execution boundary. | Yes |
-| [AurorisNet.InteractiveReports.Core](https://www.nuget.org/packages/AurorisNet.InteractiveReports.Core/) | Report models, expression language, validation, SQL planning, and execution. | Yes |
-| [AurorisNet.InteractiveReports.Client.FileDownload](https://www.nuget.org/packages/AurorisNet.InteractiveReports.Client.FileDownload/) | CSV and self-contained HTML download endpoints. Add this for browser downloads. | No; optional |
-| [AurorisNet.InteractiveReports.Client.GraphQL](https://www.nuget.org/packages/AurorisNet.InteractiveReports.Client.GraphQL/) | Query saved reports through GraphQL.NET. Add this for GraphQL consumers. | No; optional |
-
-If you only need server-side .NET integration, install the ASP.NET Core package
-directly. If you only need GraphQL or download endpoints, install that adapter
-directly; each includes the server and engine without the browser package.
-
-## Get started
-
-Configure a connection and report in `appsettings.json`, following the
-[Getting started guide](https://github.com/auroris/Interactive-Reports/blob/main/docs/GETTING-STARTED.md).
-Then register services and map the browser/API routes in `Program.cs`:
+Configure a connection and a report in `appsettings.json`, as the [getting started guide](https://github.com/auroris/AurorisNet.InteractiveReports/blob/main/docs/GETTING-STARTED.md) shows. Then register the services and map the routes:
 
 ```csharp
 using InteractiveReport.AspNetCore;
@@ -66,18 +39,26 @@ app.MapInteractiveReportJson("/api/reports");
 app.Run();
 ```
 
-For a report named `orders`, open `/api/reports/orders/view`. The
-[minimal sample](https://github.com/auroris/Interactive-Reports/blob/main/samples/Minimal/README.md)
-includes a working SQLite database. Saved-report persistence and authentication
-are configured by the host; see the getting-started guide for those steps.
+For a report named `orders`, open `/api/reports/orders/view`. A report requires a signed-in caller unless its definition sets `allowAnonymous`.
 
-NuGet IDs use `AurorisNet.InteractiveReports`; C# namespaces remain
-`InteractiveReport.*`. Use matching versions when adding optional adapters.
+## Related packages
+
+| Package | Adds |
+|---|---|
+| [AurorisNet.InteractiveReports.Client.FileDownload](https://www.nuget.org/packages/AurorisNet.InteractiveReports.Client.FileDownload/) | CSV and HTML downloads. The report's Download menu needs it. |
+| [AurorisNet.InteractiveReports.Client.GraphQL](https://www.nuget.org/packages/AurorisNet.InteractiveReports.Client.GraphQL/) | A query-only GraphQL endpoint for saved reports. |
+| [AurorisNet.InteractiveReports.AspNetCore](https://www.nuget.org/packages/AurorisNet.InteractiveReports.AspNetCore/) | The server. Installed with this package. |
+| [AurorisNet.InteractiveReports.Core](https://www.nuget.org/packages/AurorisNet.InteractiveReports.Core/) | The engine. Installed with this package. |
+
+The five packages are released together. Use one version for all of them. C# namespaces are `InteractiveReport.*`.
 
 ## Documentation
 
-- [Embedding and customizing the report](https://github.com/auroris/Interactive-Reports/blob/main/docs/EMBEDDING.md)
-- [Saved reports and administration](https://github.com/auroris/Interactive-Reports/blob/main/docs/SAVED-REPORTS.md)
-- [Authorization](https://github.com/auroris/Interactive-Reports/blob/main/docs/AUTHORIZATION.md)
-- [User guide](https://github.com/auroris/Interactive-Reports/blob/main/docs/USER-GUIDE.md)
-- [Source and issues](https://github.com/auroris/Interactive-Reports)
+The [repository README](https://github.com/auroris/AurorisNet.InteractiveReports/blob/main/README.md) has the settings tables and links every guide:
+
+- [Getting started](https://github.com/auroris/AurorisNet.InteractiveReports/blob/main/docs/GETTING-STARTED.md)
+- [Embedding the report](https://github.com/auroris/AurorisNet.InteractiveReports/blob/main/docs/EMBEDDING.md)
+- [Integration API](https://github.com/auroris/AurorisNet.InteractiveReports/blob/main/docs/API.md)
+- [Authorization](https://github.com/auroris/AurorisNet.InteractiveReports/blob/main/docs/AUTHORIZATION.md)
+- [Saved reports](https://github.com/auroris/AurorisNet.InteractiveReports/blob/main/docs/SAVED-REPORTS.md)
+- [User guide](https://github.com/auroris/AurorisNet.InteractiveReports/blob/main/docs/USER-GUIDE.md)

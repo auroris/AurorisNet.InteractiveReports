@@ -1,46 +1,31 @@
 # Getting started
 
-This guide takes an ASP.NET Core application from an empty integration to a working
-report. It keeps the first run small, then points to the guides that own optional
-features and operational detail.
-
-For a runnable report-only application, see the [minimal sample](../samples/Minimal/README.md).
-For Windows identity, administration, and authorization hooks, see the
-[Windows Authentication sample](../samples/WindowsAuthentication/README.md).
+This guide adds a first report to an ASP.NET Core application, then saved reports and an authorization rule. For a host you can run as it is, see the [minimal sample](../samples/Minimal/README.md) or the [Windows Authentication sample](../samples/WindowsAuthentication/README.md).
 
 ## Prerequisites
 
-You need an ASP.NET Core application targeting .NET 8 or later and a database the
-application can reach. For SQLite, SQL Server, PostgreSQL, or Oracle, the host
-application must reference the matching ADO.NET driver.
+- An ASP.NET Core application that targets .NET 8 or later.
+- A SQL Server, PostgreSQL, Oracle or SQLite database the application can reach.
+- The ADO.NET driver for that database, referenced by the application: `Microsoft.Data.SqlClient`, `Npgsql`, `Oracle.ManagedDataAccess.Core` or `Microsoft.Data.Sqlite`.
 
 ## 1. Install the packages
 
-Install the JSON and browser client, which brings in the server and core dependencies:
-
 ```sh
 dotnet add package AurorisNet.InteractiveReports
-```
-
-For the SQLite example below, also install the provider in the host application:
-
-```sh
 dotnet add package Microsoft.Data.Sqlite
 ```
 
-Add the file-download package when users should be able to export CSV:
+`AurorisNet.InteractiveReports` holds the REST API and the browser UI, and brings in the server and engine packages. Add `AurorisNet.InteractiveReports.Client.FileDownload` when users should download CSV and HTML files:
 
 ```sh
 dotnet add package AurorisNet.InteractiveReports.Client.FileDownload
 ```
 
-For GraphQL, add `AurorisNet.InteractiveReports.Client.GraphQL`; see the
-[GraphQL adapter guide](GRAPHQL.md). NuGet package names use the
-`AurorisNet.InteractiveReports` prefix; C# namespaces remain `InteractiveReport.*`.
+`AurorisNet.InteractiveReports.Client.GraphQL` is described in the [GraphQL adapter guide](GRAPHQL.md). The C# namespaces of all packages are `InteractiveReport.*`.
 
-## 2. Configure a data source and report
+## 2. Configure a data source and a report
 
-Add a normal connection string and one report definition to `appsettings.json`:
+Add a connection string and one report definition to `appsettings.json`:
 
 ```json
 {
@@ -60,24 +45,19 @@ Add a normal connection string and one report definition to `appsettings.json`:
 }
 ```
 
-The `dataSource` value has two forms:
+`dataSource` names an entry under `ConnectionStrings`. A value that contains `=` is read as a literal connection string instead.
 
-- A value without `=` names an entry under `ConnectionStrings`.
-- A value containing `=` is treated as a literal connection string.
+The server needs to know the database provider. It reads `ConnectionStrings:MainDb_ProviderName`, as above, or the report's own `provider` setting: `sqlite`, `sqlServer`, `postgres` or `oracle`. A literal connection string always needs `provider`.
 
-The provider is resolved from `ConnectionStrings:MainDb_ProviderName` above. You can
-also set the report's `provider` to `sqlite`, `sqlServer`, `postgres`, or `oracle`.
-For SQL Server, PostgreSQL, or Oracle, the host must reference
-`Microsoft.Data.SqlClient`, `Npgsql`, or `Oracle.ManagedDataAccess.Core`, respectively.
+`sql` is trusted application configuration and stays on the server. Write a `SELECT` without a final `ORDER BY`: users choose the sort order.
 
-The `sql` value is trusted application configuration. It must be a `SELECT`; it is never
-sent to the browser. Reports require an authenticated caller by default. This example
-sets `allowAnonymous` only to make the first run independent of the host's authentication
-setup. Remove that setting for a real authenticated report.
+A report requires a signed-in caller unless it sets `allowAnonymous`. This example sets it so the first run works before authentication is configured. Remove it for a report that should require sign-in.
+
+The [settings tables](../README.md#settings) list every option.
 
 ## 3. Register and map the server
 
-Add the services and endpoints in `Program.cs`:
+In `Program.cs`:
 
 ```csharp
 using InteractiveReport.AspNetCore;
@@ -88,66 +68,59 @@ var reports = builder.Services.AddInteractiveReports(builder.Configuration);
 builder.Services.AddInteractiveReportJson();
 
 var app = builder.Build();
-// Configure the application's usual middleware.
+// The application's authentication and authorization middleware goes here.
 
 app.MapInteractiveReportJson("/api/reports");
+app.Run();
 ```
 
-If you installed the file-download package, register and map it too:
+With the file-download package, register and map it too:
 
 ```csharp
 using InteractiveReport.Client.FileDownload;
 
 builder.Services.AddInteractiveReportFileDownload();
 
-// After app has been built:
+// After builder.Build():
 app.MapInteractiveReportFileDownload("/api/download");
 ```
 
-The route prefix is application-owned. The examples in this documentation assume
-`/api/reports` and `/api/download`.
+The application chooses both route prefixes. This documentation uses `/api/reports` and `/api/download`, which are the defaults. The browser element finds a download prefix that follows this pattern by itself; for another prefix, set its `download-base` attribute.
 
 ## 4. Open the report
 
-Run the application and browse to:
+Run the application and browse to the packaged viewer page:
 
 ```text
 /api/reports/orders/view
 ```
 
-The packaged viewer page is useful for verification and internal tools. To place the
-report inside an application page, load the packaged module and add the custom element:
+To place the report in a page of the application, load the packaged module and add the element:
 
 ```html
 <script type="module" src="/api/reports/ui/ir.js"></script>
 <interactive-report report="orders"></interactive-report>
 ```
 
-The element loads the report family's schema and hydrated default document, then renders
-the returned data. Without a stored default, the server generates a synthetic document
-without saving it. See [Embedding the report](EMBEDDING.md) for properties, events,
-theming, and host integration.
+[Embedding the report](EMBEDDING.md) describes the element's attributes, JavaScript API, events and theming.
 
-If the viewer does not start, check these boundaries first:
+If the report does not appear, check these first:
 
-- The configured connection string points to a reachable database.
-- The configured `SELECT` runs for the report connection's database principal.
-- The matching ADO.NET provider package is referenced by the host.
-- The request is authenticated unless the report explicitly allows anonymous access.
+- The connection string points to a database the application can reach.
+- The `SELECT` runs for the database account in the connection string.
+- The application references the ADO.NET driver package.
+- The request is signed in, or the report sets `allowAnonymous`.
 
-Definition errors fail during application startup with a message naming the invalid
-report. Runtime API failures use the coded error shape described with the
-[REST surface](API.md#rest-surface).
+An invalid definition stops the application at startup with a message that names the report. A failed request returns the [coded error](API.md#errors) described in the API reference.
 
 ## Add saved reports and administration
 
-No persistence is created by the basic integration. To enable saved reports, configured
-report documents, and administration, choose a database explicitly:
+The first integration stores nothing. To let users save reports, name a database for them:
 
 ```json
 {
   "InteractiveReport": {
-    "Administrators": [ "bootstrap-admin-id" ],
+    "Administrators": [ "identity-value-of-the-first-administrator" ],
     "SavedReports": {
       "dataSource": "MainDb",
       "tablePrefix": "MYAPP_"
@@ -156,40 +129,28 @@ report documents, and administration, choose a database explicitly:
 }
 ```
 
-The storage `dataSource` follows the same rules as a report data source. With the default
-auto-create behavior, this example creates `MYAPP_IR_SAVED_REPORTS` and
-`MYAPP_IR_ADMINISTRATORS` when the persistence subsystem is first used. A report-only
-installation still creates neither tables nor local files.
+`SavedReports:dataSource` follows the same rules as a report's `dataSource`. The server creates `MYAPP_IR_SAVED_REPORTS` and `MYAPP_IR_ADMINISTRATORS` when they are first needed.
 
-The packaged administration page is then available at:
+The packaged administration page is then at:
 
 ```text
 /api/reports/admin
 ```
 
-The bootstrap administrator value must match the caller's canonical identity. Enable
-`InteractiveReport:WhoamiEnabled` temporarily when you need the application to show the
-identity it resolved. The configured list and the administration center's own list are
-the fallback: an application that prefers to decide administrators itself registers
-`UseAdministrators(...)` or names an `AdministratorPolicy`, as described in
-[Authorization](AUTHORIZATION.md#administrators). See [Saved reports](SAVED-REPORTS.md)
-for persistence, defaults, configured JSON documents, import/export, and the
-administration workflow.
+An entry in `Administrators` must equal the identity value the server resolves for the caller, character for character. To see that value, set `InteractiveReport:WhoamiEnabled` to `true`, sign in and open `/api/reports/whoami`. Turn the setting off afterwards.
 
-## Choose an authorization integration
+An application that already knows its administrators can decide the question itself with `UseAdministrators(...)` or `AdministratorPolicy`: see [Administrators](AUTHORIZATION.md#administrators). [Saved reports](SAVED-REPORTS.md) covers storage, defaults, source-controlled documents and the administration page.
 
-Interactive Reports always applies its built-in authentication, report-policy, saved-report
-visibility, and administrator rules. Applications can add operation-specific rules with
-either of these builder methods:
+## Add an authorization rule
+
+The server always applies its own rules: sign-in, the report's policy, saved-report ownership and the administrator check. The application can add a rule for each operation. A callback returns `false` to deny:
 
 ```csharp
 reports.UseAuthorization((request, cancellationToken) =>
 {
-    cancellationToken.ThrowIfCancellationRequested();
     var allowed = request.Action switch
     {
-        InteractiveReportAction.Export =>
-            request.User.HasClaim("reports", "export"),
+        InteractiveReportAction.Export => request.User.HasClaim("reports", "export"),
         _ => true,
     };
 
@@ -197,51 +158,18 @@ reports.UseAuthorization((request, cancellationToken) =>
 });
 ```
 
-Or delegate to standard ASP.NET Core resource handlers:
+A registered callback is asked about every protected operation, so it must return `true` for the operations it has no opinion on. Read [Authorization](AUTHORIZATION.md) before you deploy a callback: it lists every action, the ASP.NET Core resource-handler alternative, row restrictions and the response each denial produces.
+
+## Connections created in code
+
+Register a connection factory when configuration cannot create the connection, for example for a profiling wrapper or a factory that picks a tenant's database:
 
 ```csharp
-reports.UseAspNetCoreAuthorization();
-builder.Services.AddScoped<IAuthorizationHandler, InteractiveReportsAuthorizationHandler>();
+reports.AddConnection("MainDb", services => new SqlConnection(connectionString));
 ```
 
-Once application authorization is registered, it participates in every protected action;
-it is not limited to exceptional cases. Read [Authorization](AUTHORIZATION.md) before
-deploying custom callbacks or handlers. That guide defines every action, candidate
-resource, composition rule, and denial response.
+The report then sets `"connection": "MainDb"` in place of `dataSource`. The server detects the SQL dialect from the connection type. Pass a `ReportDialect` as the third argument when the factory returns a wrapper type.
 
-## Optional integrations
+## Umbraco
 
-The remaining guides each own one integration surface:
-
-| Goal | Guide |
-|---|---|
-| Configure every server option or call the public .NET and REST APIs | [Integration API](API.md) |
-| Persist, publish, deploy, import, or administer report documents | [Saved reports](SAVED-REPORTS.md) |
-| Embed and customize the browser component | [Embedding the report](EMBEDDING.md) |
-| Expose saved-report queries through GraphQL.NET | [GraphQL adapter](GRAPHQL.md) |
-| Understand package boundaries and request execution | [Architecture](ARCHITECTURE.md) |
-| Learn the report UI and expression language | [User Guide](USER-GUIDE.md) |
-
-### Umbraco 13
-
-An Umbraco site already has its connection string under
-`ConnectionStrings:umbracoDbDSN` and a companion provider-name value. A report over the
-Umbraco database can therefore use `"dataSource": "umbracoDbDSN"`. Register the services
-normally and map the endpoints after `app.UseUmbraco(...)`. Members-only reports can use
-a policy registered by the host:
-
-```json
-"authorization": { "policy": "MayViewReports" }
-```
-
-### Programmatic connections
-
-Use a named connection factory when configuration cannot create the connection, such as
-for a profiled wrapper or a tenant-aware factory:
-
-```csharp
-reports.AddConnection("MainDb", services => new SqlConnection(...));
-```
-
-The report then uses `"connection": "MainDb"` instead of `dataSource`. Supply an explicit
-`ReportDialect` when the returned connection type is a wrapper the engine cannot infer.
+An Umbraco site keeps its connection string in `ConnectionStrings:umbracoDbDSN`, with the provider in `ConnectionStrings:umbracoDbDSN_ProviderName`. A report over the Umbraco database can therefore set `"dataSource": "umbracoDbDSN"` and no `provider`.

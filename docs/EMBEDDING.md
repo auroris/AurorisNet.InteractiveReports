@@ -1,63 +1,56 @@
 # Embedding the report
 
-The packaged `<interactive-report>` custom element is the primary way to put a report
-on a page. This guide covers the element's attributes, the host JavaScript API, query
-lifecycle events, client-control overrides, file downloads, theming, host stylesheets,
-column renderers, and definition-owned presentation such as edit links. The
-[Integration API guide](API.md) lists the same surface as reference tables.
+How to place the `<interactive-report>` element in a page and control it: attributes, JavaScript API, events, controls, theming, column renderers, edit links and create buttons.
 
-## The custom element
-
-The bundle contains the component's styles and renders into a shadow root, so
-host styles such as Tailwind resets do not reach the widget and widget styles do
-not reach the host page.
+## Load the element
 
 ```html
-<script type="module" src="/assets/ir.js"></script>
-<interactive-report
-  report="orders"
-  saved-report="87"
-  api-base="/api/reports"
-  stylesheet="/assets/report-overrides.css">
-</interactive-report>
+<script type="module" src="/api/reports/ui/ir.js"></script>
+
+<interactive-report report="orders"></interactive-report>
 ```
 
-`report` is the appsettings report configuration name. The component calls
-`GET /api/reports/{name}` for saved choices and loads the initial document through
-`GET /api/reports/{name}/default`, or `GET /api/reports/{name}/{id}` when the numeric
-`saved-report` attribute is set. Loading returns the hydrated document and data together;
-the component renders that result without a follow-up query. A family with no stored
-default can load a synthetic default without creating a database row. The component does not
-use the root configuration catalogue during ordinary bootstrap. Titles are presentation
-only, and duplicate titles remain distinguishable by their Public and Private groups.
-Server authorization still applies when the component requests schema, report documents,
-queries, and exports.
+`ir.js` is served by `MapInteractiveReportJson` and defines the element. The element renders in a shadow root with its own styles, so page styles such as a CSS reset do not reach it, and its styles do not reach the page.
 
-## Configuring individual instances
+When it connects, the element requests the report's schema, its saved-report list, and one document with data: the saved report named by `saved-report`, or the report's default. It renders that response without a second query. The server authorizes each of these requests.
 
-An ordinary HTML host can configure each element independently. These settings also work
-when a CMS, dashboard, or application shell creates the element:
+The chart renderer, `ir-chart.js`, loads the first time a report shows a chart.
 
-```html
-<interactive-report report="orders" report-title="Current orders"
-  controls="search columns filter sort pagination"
-  initial-page-size="20" empty-message="No matching orders.">
-</interactive-report>
-```
+## Attributes and properties
 
-`report-title` opts into a heading. Omit it to preserve the original heading-free layout;
-an empty attribute uses the source title. `controls` is a space-separated list, or an array
-through the property. Omission inherits server suggestions and an empty list hides every
-optional control. Explicit `setControlEnabled` overrides take precedence over this list.
-These are presentation choices; server authorization remains authoritative.
+| Attribute | Property | Meaning |
+|---|---|---|
+| `report` | | Required. The report name. Changing it loads the other report. |
+| `saved-report` | | Id of the saved report to open. A missing or hidden id opens the default with a warning. |
+| `api-base` | `apiBase` | Prefix of the JSON routes, relative or absolute. Default: the folder above the module URL, so `/api/reports/ui/ir.js` gives `/api/reports`. |
+| `download-base` | `downloadBase` | Prefix of the download route. Default: `api-base` with a final `reports` segment replaced by `download`, otherwise `/api/download`. |
+| `report-title` | `reportTitle` | Shows a heading. An empty value uses the report's title. Without the attribute there is no heading. |
+| `empty-message` | `emptyMessage` | Text shown when the result has no rows. |
+| `controls` | `controls` | The controls to show: names separated by spaces, or an array on the property. An empty list hides every optional control. Without it, the report's `features` decide. |
+| `initial-page-size` | `initialPageSize` | Page size of the first load. It does not change the paging of a saved report opened by `saved-report`. |
+| `lang` | | Language of the UI. See [Language](#language). |
+| `theme` | `theme` | `light` or `dark`. Without it the element follows the page. See [Dark mode](#dark-mode). |
+| `disabled` | `disabled` | Makes every control of the element inert. |
+| `stylesheet` | `styleSheet` | URL of a stylesheet to load inside the shadow root. `null` removes it. |
+| | `initialDocument` | A report document to run on the first load in place of the default. |
+| | `columnPresentation` | Per-column `label`, `helpText` and `hideLabel`, keyed by column name. |
+| | `editLink`, `createLink` | Replace the definition's [link settings](#edit-links-create-buttons-and-column-overrides). `null` hides the link and `undefined` restores the definition's. |
+| | `printHandler` | A function that adds **Print…** to the Actions menu. See [Downloads and printing](#downloads-and-printing). |
+| | `reportId` | Read-only. Id of the saved report the working document belongs to, as a string, or `null`. |
+| | `definitionName` | Read-only. The active report name. |
 
-Assign structured configuration before inserting a programmatically created element:
+Property values are copied on the way in and out, so changing an object after assigning it has no effect.
+
+### Configuring several instances
+
+Each element is configured by itself. A page, a CMS block or an application shell can create them in code:
 
 ```js
 const report = document.createElement("interactive-report");
 report.setAttribute("report", "orders");
 report.reportTitle = "Large orders";
 report.initialPageSize = 10;
+report.controls = ["search", "columns", "filter", "sort", "pagination"];
 report.initialDocument = {
   activeTable: "base",
   tables: { base: { from: "definition", composables: [
@@ -68,126 +61,62 @@ report.columnPresentation = { CUSTOMER: { label: "Customer name" } };
 document.querySelector("main").append(report);
 ```
 
-Activation precedence is explicit `saved-report`, then `initialDocument`, then the normal
-default. An initial document goes directly through the ordinary query endpoint without
-first running the default query. Invalid initial state remains an error. Its page size is
-overridden by `initialPageSize` when supplied. Default loads use
-`GET /api/reports/{name}/default?pageSize=10`; execution clamps the size to the definition's
-maximum without changing a stored view. Both the .NET and browser demo servers support it.
-A saved-report activation retains that saved view's paging.
+The first load uses `saved-report` when set, then `initialDocument`, then the report's default. An `initialDocument` is posted to the query route, and an invalid one shows an error. `initialPageSize` overrides the document's page size and is limited by the report's `maxPageSize`.
 
-Structured property values and getters are detached. Changes to title, controls, empty
-message, column presentation, or links update the current display without issuing a
-query. Initial settings changed after activation seed the next activation; use
-`submitReportDocument` to deliberately replace a running view.
+Changing the title, controls, empty message, column presentation or links updates the display without a query. A changed `initialDocument` or `initialPageSize` applies the next time the element loads a report. To replace the view of a running element, call `submitReportDocument`.
 
-**Actions → Download** offers CSV and self-contained HTML by default. Both formats are implemented by the standard file-download adapter and the in-browser demo server, using `POST {downloadBase}/{definitionName}/{format}`. `getExport("html")` retrieves the HTML artifact without starting a browser download. HTML export needs no host plugin, AppBlocks, Documents, or Pressroom; the `download` control and export authorization still govern it.
+`columnPresentation` and the link properties change what the user sees and nothing about what the server allows. An `editLink` override may only use placeholders that the definition's `editLink` already names, because the server sends only those column values with each row. Link URLs must be relative or use `http` or `https`.
 
-`printHandler` is an optional host-owned callback for **Actions → Print**. Assign a function receiving the report element to open your application's print dialog; assign `null` to hide the entry. The callback may return a promise, and rejected promises appear in the report's error banner. Print also follows the `download` control. The widget provides no built-in printer transport: the host owns destinations, authorization, preview and submission. Assigning or removing the handler updates the menu without requerying the report.
+The Workbench page [`embedding.html`](../samples/Workbench/wwwroot/embedding.html) shows two elements over one report.
 
-```js
-report.printHandler = async element => {
-  await openApplicationPrintDialog(element.getReportDocument());
-};
-```
+## JavaScript API
 
-`columnPresentation` accepts only `label`, `helpText`, and `hideLabel` for each named column.
-`editLink` and `createLink` accept the same objects as their definition counterparts. Set
-either to `null` to hide it, or `undefined` to inherit. Link overrides never confer operation
-permission. Component edit-link placeholders must already appear in the server-defined
-edit-link template, because that definition owns the required hidden key projection. To
-introduce a new key column, update the server definition too. Relative and HTTP(S) URLs are
-accepted; script and other unsafe URL schemes are rejected.
+The document, list-of-values and export methods work once the first load has completed. Before that they throw an `InvalidStateError`.
 
-The Workbench's [`embedding.html`](../samples/Workbench/wwwroot/embedding.html) demonstrates
-two independently configured elements with no CMS dependency.
-
-## Host API
-
-Once the initial report has loaded, an embedding application can retrieve an export
-without presenting it as a browser download. `getExport` accepts the format token and
-an optional `AbortSignal`, and resolves to `{ blob, filename, contentType, truncated }`:
+| Method | Result |
+|---|---|
+| `getReportDocument()` | A copy of the working report document: the last accepted document plus edits that wait for a query in flight. |
+| `submitReportDocument(document)` | Runs the document and adopts the result. Resolves to a copy of the result, or `undefined` when the query was cancelled or replaced. A failure restores the previous document and rejects. |
+| `getListOfValues({ document, table, column, search, signal })` | Resolves to `{ table, column, type, items, truncated }` with at most 50 distinct values. `document` and `table` default to the element's current ones. |
+| `getExport(format = "csv", { signal })` | Resolves to `{ blob, filename, contentType, truncated }` without starting a browser download. `format` is `csv` or `html`. |
+| `setControlEnabled(name, enabled)` | Shows or hides one control. `null` returns to the report's `features`. Returns the effective state. |
+| `setControlOverrides(overrides)` | Applies several overrides at once. Returns the override map. |
+| `clearControlOverrides()` | Removes every override. |
+| `isControlEnabled(name)` | The effective state of one control. |
+| `getControlOverrides()` | A copy of the override map. |
 
 ```js
 const report = document.querySelector("interactive-report");
-const abortController = new AbortController();
-const artifact = await report.getExport("csv", { signal: abortController.signal });
 
-// The host decides what retrieval means: upload it, attach it, cache it, or save it.
-await uploadReport(artifact.blob, artifact.filename, artifact.contentType);
-```
-
-The Actions-menu download commands retrieve the same artifacts and then invokes the browser's
-download behavior.
-
-The element also exposes its working report document (the accepted document plus any
-edits accumulated while a query is in flight) as a detached JSON-compatible
-object. `submitReportDocument` replaces the working document transactionally, posts it
-through the ordinary query endpoint, adopts the server-enriched document, rerenders the
-report, and resolves to a detached query result. A failed submission restores the last
-validated document; a canceled or superseded submission resolves to `undefined`.
-
-```js
 const state = report.getReportDocument();
 state.search = "urgent";
 state.page.index = 1;
-
 const result = await report.submitReportDocument(state);
-console.log(result.rows, report.getReportDocument());
+console.log(result?.rows);
+
+const values = await report.getListOfValues({ column: "STATUS", search: "pen" });
+console.log(values.items);
 ```
 
-Column headers, the filter editor, and the highlight editor use a searchable list of
-values from the currently viewed table. Each lookup posts the complete current report document, so unsaved filters
-and computed state participate, then requests one column and optional search text. The
-server applies ordinary query authorization and returns at most 50 distinct values. Host
-JavaScript can use the same path. The chooser is editable: selecting a result uses it,
-while Enter or **Use Typed Value** accepts the search text without another input field.
-Lookup search is case-insensitive and partial by default. An accepted text value is an
-exact case-insensitive filter or highlight condition unless typed text contains `*`.
-For example, `Ac*Corp` is a wildcard match and `Ac\*Corp` matches a literal asterisk.
-The characters `%` and `_` have no wildcard meaning in this user-facing syntax:
+Documents are plain objects. Parse a JSON string before passing it. [Report documents](API.md#report-documents) describes the format.
 
-```js
-const document = report.getReportDocument();
-const values = await report.getListOfValues({
-  document,
-  table: document.activeTable,
-  column: "STATUS",
-  search: "pen"
-});
-```
+`search` in `getListOfValues` is a partial match that ignores case. The packaged value picker turns the chosen text into an exact condition, `LOWER(column) = LOWER(value)`, or into `WILDCARD_MATCH(column, pattern)` when the typed text contains `*`.
 
-These methods require the initial query to have completed. Their arguments and return
-values never expose the widget's mutable working objects. Input must be a JSON-compatible
-object; a JSON string should be parsed by the caller first.
+## Events
 
-## Query lifecycle events
+All events bubble and cross the shadow boundary.
 
-Every client-submitted hydration, including ordinary UI edits and host submissions,
-dispatches a bubbling, composed `ir-before-query` event immediately before the request.
-Initial and saved-report loads hydrate on the server and do not dispatch this event.
-Its `detail` is `{ document, source, requestId, signal }`. The detached
-`document` is mutable during synchronous event dispatch; its final value is serialized
-and sent. Calling `preventDefault()` cancels that query. Its `source` is `user`, `host`,
-or `refresh`.
+| Event | When | `detail` |
+|---|---|---|
+| `ir-before-query` | Before the element posts a document to the query route. Cancelable. | `{ document, source, requestId, signal }` |
+| `ir-query-complete` | After a load or query result is rendered. | `{ document, result, submitted, source, requestId }` |
+| `ir-edit` | The user activates a row's edit link. Cancelable. | `{ url, row }` |
+| `ir-create` | The user activates the create button. Cancelable. | `{ url }` |
+| `ir-action` | The user clicks a button in an action column. | `{ command, row, column }` |
 
-Ordinary UI edits are single-flight. An edit on an idle widget is sent immediately. While
-a query is in flight, further chip removals, toggles, paging commands, or other
-packaged-control mutations accumulate in the working document instead of aborting it.
-When that query lands, its result is rendered and `ir-query-complete` fires for it, so a
-burst of page moves shows each page as it arrives, but its document does not replace the
-working document; one follow-up query then carries the accumulated state. At most one
-query is outstanding per widget. Initial and saved-report loads, explicit
-`submitReportDocument()` calls, and administration refreshes abort any in-flight
-query and cancel accumulated edits; an export posts the working document and leaves an
-in-flight query alone.
+`source` is `initial`, `saved-report`, `user`, `host` or `refresh`.
 
-After a successful hydration has been rendered, including initial and saved-report loads, `ir-query-complete`
-dispatches with detached `{ document, result, submitted, source, requestId }` snapshots.
-For loads, `source` is `initial` or `saved-report` and `submitted` is `null`, because no
-client document was sent. For queries, `submitted` is the document sent to the server.
-It is observational: changing its detail cannot mutate the report. Submit a changed copy
-with `submitReportDocument` when a returned document needs another query.
+A listener of `ir-before-query` may change `detail.document` during the event: the element sends the changed document. `preventDefault()` cancels the query. The first load and saved-report loads run on the server and fire only `ir-query-complete`, with `submitted` set to `null`.
 
 ```js
 report.addEventListener("ir-before-query", event => {
@@ -199,33 +128,34 @@ report.addEventListener("ir-query-complete", event => {
 });
 ```
 
+The detail of `ir-query-complete` is a copy. To act on it, submit a changed copy with `submitReportDocument`.
+
+### One query at a time
+
+The element runs at most one query. An edit on an idle element is sent at once. Edits made while a query is in flight collect in the working document. When the query returns, its result is rendered and `ir-query-complete` fires, and one more query then carries the collected edits.
+
+A new load, a saved-report load and `submitReportDocument` cancel a query in flight and discard collected edits. A download posts the working document and leaves the query alone.
+
 ## Client controls
 
-The schema's `features` list is the server's initial suggestion for packaged client
-controls, not an authorization boundary or a ceiling. Embedding JavaScript may force a
-control on or off, restore the suggestion with `null`, update several controls together,
-or clear every override:
+A report's `features` setting decides which controls the element shows at first. The page can change that:
 
 ```js
 report.setControlEnabled("filter", true);
 report.setControlEnabled("download", false);
-report.setControlEnabled("filter", null); // inherit the server suggestion again
+report.setControlEnabled("filter", null); // follow the report's features again
 
 report.setControlOverrides({ search: true, sort: false, savedReports: true });
-console.log(report.isControlEnabled("search"), report.getControlOverrides());
 report.clearControlOverrides();
 ```
 
-Control names are `search`, `columns`, `rename`, `columnSettings`, `filter`, `sort`,
-`pagination`, `controlBreak`, `highlight`, `aggregate`, `compute`, `groupBy`, `pivot`,
-`chart`, `savedReports`, and `download`. Names are matched case-insensitively and retained
-in canonical spelling. Overrides stay on the element across report changes. Enabling
-`savedReports` after load exposes the saved choices already retrieved. Client overrides affect only packaged
-UI: endpoints still perform authorization, validation, and their configured download or
-saved-report checks.
+The control names are the feature tokens: `search`, `columns`, `rename`, `columnSettings`, `filter`, `sort`, `pagination`, `controlBreak`, `highlight`, `aggregate`, `compute`, `groupBy`, `pivot`, `chart`, `savedReports` and `download`. Case is ignored.
 
-The standard boolean `disabled` property and attribute temporarily make the entire
-package-owned surface inert without altering these overrides:
+Precedence is: an override set by `setControlEnabled` or `setControlOverrides`, then the `controls` list, then the report's `features`. Overrides stay when `report` changes.
+
+**Controls are presentation.** Showing a control gives the user no permission: the server still refuses a download or a save that the report's `features` or the application's rules do not allow. Hiding a control removes no permission either. See [Features](API.md#features).
+
+`disabled` makes the whole element inert for a while and keeps the overrides:
 
 ```js
 report.disabled = true;
@@ -233,57 +163,31 @@ await performHostOperation();
 report.disabled = false;
 ```
 
-`styleSheet` reflects the `stylesheet` attribute. Assigning another URL replaces the
-shadow-root link immediately; assigning `null` removes it. The stylesheet belongs to
-the host element and remains in place when `report` changes.
+## Downloads and printing
 
-## File downloads
+**Actions → Download** offers CSV and HTML. Both need the file-download package on the server: see [File downloads](API.md#file-downloads). The element posts its working document to `{download-base}/{report}/{format}`.
 
-File downloads are a peer client, not an engine endpoint. Register and map the optional
-package independently:
+`getExport` returns the same file to the page, which decides what to do with it:
 
-```csharp
-using InteractiveReport.Client.FileDownload;
-
-builder.Services.AddInteractiveReportFileDownload();
-// …
-app.MapInteractiveReportFileDownload("/api/download");
+```js
+const controller = new AbortController();
+const file = await report.getExport("csv", { signal: controller.signal });
+await uploadReport(file.blob, file.filename, file.contentType);
 ```
 
-The JavaScript client posts its current report document to
-`POST /api/download/{name}/csv` or `POST /api/download/{name}/html`. The file client detaches the document, sets paging to
-all rows, applies the central `Export` authorization and `download` feature gate, then
-submits the mutated document through `IInteractiveReportServer.QueryForDownload` before
-rendering the selected format. HTML includes its styles, display masks, breaks and totals, and uses a data table for chart views. It rejects truncated results and documents over four million characters with HTTP 422 (`IR-1102`). The public `HtmlReportPresentation.Render` method lets hosts reuse the HTML for their own document/printing services. Set the element's `download-base` attribute when the route is mounted at
-a non-default prefix.
+`truncated` is `true` when the report's row cap cut the file.
 
-## Behavior notes
+**Actions → Print…** appears when the page assigns a `printHandler`, and follows the `download` control. The element has no printing of its own: the handler receives the element and opens the application's print flow. A rejected promise shows in the report's error banner. Assign `null` to remove the entry.
 
-Without a client override, the widget follows the definition's `features` suggestion
-described under [client controls](#client-controls): menu entries, view buttons, the
-search bar, and the saved-report select render only for listed features. Independently,
-the server refuses
-CSV export and saved-report creation when their configured `download` / `savedReports`
-policies are absent.
+```js
+report.printHandler = async element => {
+  await openApplicationPrintDialog(await element.getExport("html"));
+};
+```
 
-A definition's `editLink` pencil and `createLink` button navigate like ordinary
-anchors — relative URLs resolve against the host page, and routing to the edit or
-create form is entirely the host application's concern. A host that would rather open
-its own editor listens for `ir-edit` / `ir-create` instead (see
-[Edit links, create buttons, and column overrides](#edit-links-create-buttons-and-column-overrides)).
+## Theming
 
-Pagination, null placement, control breaks, totals, and the rest of the end-user behavior
-belong to the [User Guide](USER-GUIDE.md). Host code should submit and adopt complete
-report documents rather than reproduce those UI rules.
-
-## Attributes and theming
-
-`saved-report` is optional. When present, the component loads that visible numeric
-document id before the first query. Omit it to load the document named by `report`.
-
-`api-base` may be a relative path or an absolute URL. If it is omitted, the
-component infers the API prefix from the script URL. Theme tokens such as
-`--ir-accent` can be set on the custom element without exposing its internal CSS.
+Set theme properties on the element, and style its parts from the page:
 
 ```css
 interactive-report {
@@ -298,74 +202,45 @@ interactive-report::part(toolbar) {
 }
 ```
 
-The supported theme properties are `--ir-accent`, `--ir-accent-soft`,
-`--ir-border`, `--ir-border-light`, `--ir-bg`, `--ir-bg-soft`,
-`--ir-bg-header`, `--ir-text`, `--ir-text-muted`, `--ir-danger`,
-`--ir-radius`, `--ir-font`, and `--ir-font-size`, plus the chart tokens
-`--ir-chart-1` … `--ir-chart-8` (categorical palette; slot 1 is also the
-single-series color), `--ir-chart-grid`, and `--ir-chart-text`. The supported
-structural parts are `surface`, `toolbar`, `notices`, `chips`,
-`table-container`, `chart-container`, `table`, `pager`, `menu`,
-and `dialog`. Editor dialogs are movable, modeless windows, so the report remains
-available while they are open. Short destructive confirmations remain modal.
+| Kind | Names |
+|---|---|
+| Colours | `--ir-accent`, `--ir-accent-soft`, `--ir-border`, `--ir-border-light`, `--ir-bg`, `--ir-bg-soft`, `--ir-bg-header`, `--ir-text`, `--ir-text-muted`, `--ir-danger` |
+| Shape and type | `--ir-radius`, `--ir-font`, `--ir-font-size` |
+| Charts | `--ir-chart-1` to `--ir-chart-8` (series colours; the first is the single-series colour), `--ir-chart-grid`, `--ir-chart-text` |
+| Parts | `surface`, `heading`, `toolbar`, `notices`, `chips`, `table-container`, `table`, `chart-container`, `pager`, `menu`, `submenu`, `dialog` |
 
 ### Dark mode
 
-Interactive Reports includes a built-in high-contrast dark palette. Theme selection follows
-this order:
+The element has a dark palette. It chooses a theme in this order:
 
-1. An explicit `theme="dark"` or `theme="light"` attribute or `theme` property wins.
-2. Otherwise, the component follows an ancestor with `data-theme="dark"`,
-   `data-bs-theme="dark"`, `theme="dark"`, or the `.dark` class.
-3. Without either signal, it follows `prefers-color-scheme`.
-
-For explicit control:
+1. `theme="dark"` or `theme="light"` on the element, or the `theme` property.
+2. An ancestor with `data-theme`, `data-bs-theme` or `theme` set to `dark` or `light`, or with the class `dark` or `light`.
+3. The browser's `prefers-color-scheme`.
 
 ```html
 <interactive-report report="orders" theme="dark"></interactive-report>
-<interactive-report report="orders" theme="light"></interactive-report>
 ```
 
-Or set the property:
+Charts, menus and dialogs follow the theme.
 
-```js
-const report = document.querySelector("interactive-report");
-report.theme = "dark"; // "dark", "light", or null/undefined to follow system/context
-```
+### Language
 
-Charts, dialog backdrops, action popups, chips, control-break headers, and inputs follow
-the active theme.
-
-### Localization
-
-The report and administration elements include English (`en`) and Canadian French
-(`fr-CA`). Set `lang` on the element or on an ancestor:
+The element includes English (`en`) and Canadian French (`fr-CA`). It uses the nearest `lang` attribute, on itself or an ancestor, then the page's language, then the browser's languages, then English. Every French variant uses the Canadian French text.
 
 ```html
 <interactive-report lang="fr-CA" report="orders"></interactive-report>
 ```
 
-The nearest language wins, including across the component's shadow root. The page language
-is next, followed by browser preferences and an English fallback. French variants currently
-use the Canadian French catalog. Static UI, validation, coded errors, accessible labels,
-plural messages, and client-formatted numbers and dates follow the selected locale. Report
-titles, column labels, query data, and server error details remain application data.
+The language covers the UI text, error messages, and the formatting of numbers and dates. Report titles, column labels and data come from the application and stay as they are.
 
-The packaged viewer and administration pages take their document language from ASP.NET
-Core request localization when configured, then from `Accept-Language`. Catalogs and their
-ICU message formatter are compiled into the packaged bundle; the host makes no catalog
-request and installs no client dependency.
+The packaged viewer and administration pages take their language from ASP.NET Core request localization when the application uses it, otherwise from the `Accept-Language` header.
 
-## Host stylesheets and CSS classes
+### Host stylesheets and CSS classes
 
-An application integrator can set the element's `stylesheet` attribute or reflected
-`styleSheet` property to a relative or absolute stylesheet URL. The component places
-one `<link>` inside the report's shadow root after the packaged styles, so its rules can
-target report internals without leaking into the host page. For example:
+`stylesheet` loads one stylesheet inside the shadow root, after the packaged styles, so its rules can target the report's internals and stay out of the page:
 
 ```html
-<interactive-report report="orders" stylesheet="/css/orders-report.css">
-</interactive-report>
+<interactive-report report="orders" stylesheet="/css/orders-report.css"></interactive-report>
 ```
 
 ```css
@@ -373,42 +248,33 @@ target report internals without leaking into the host page. For example:
 .emphasized { font-weight: 700; }
 ```
 
-Column Settings accepts space-separated class names and saves them in the column's
-`formats.classes` list. Classes apply to the column header, data cells, and aggregate
-cells. Tokens begin with a letter or `_`, then use letters, digits, `_`, or `-`; the
-component's `ir-` prefix is reserved. Report documents can therefore select
-integrator-defined rules but cannot supply CSS or choose a stylesheet URL. Report
-definitions do not carry stylesheet configuration. The host's
-Content Security Policy still governs stylesheet loading.
+Users apply such classes to a column under **Column Settings → CSS Classes**. The classes go on the column's heading, data cells and aggregate cells. A column takes at most 20 class names. A name starts with a letter or `_`, continues with letters, digits, `_` or `-`, and must not start with `ir-`.
+
+A report document can therefore choose among the application's classes. It cannot carry CSS or name a stylesheet. The page's Content Security Policy applies to the stylesheet request.
 
 ## Column renderers
 
-Column Settings also offers `Text (Default)`, `Link`, and `Image` display modes.
-A link selects a URL column and a text column; an image selects a URL column. Source
-columns do not have to be visible: the server schema-checks them and includes them only
-in row data required by the grid and CSV renderers. Hidden sources remain absent from
-displayed and exported column metadata. CSV applies effective labels and scalar masks,
-uses a link's displayed text, uses an image's URL, and uses an action's raw label. It
-never embeds browser HTML, CSS, or highlight styling. Relative and HTTP(S) URLs are
-accepted for link and image sources;
-links additionally accept `mailto:` and `tel:`. Active or embedded-content schemes
-such as `javascript:` and `data:` render as ordinary text instead.
+**Column Settings → Display As** offers three renderers, stored in the column's `formats` entry:
 
-A fourth renderer, `displayAs: "action"`, is definition-authored only (Column
-Settings never offers it, but preserves it across restyles): the cell's value is a
-button label — a NULL label renders no button — and clicking dispatches a composed
-`ir-action` CustomEvent from the report element with `{ command, row, column }`,
-where the row includes the format's schema-bound `keyColumn` value. The built-in
-admin listing is its first consumer; in CSV an action cell exports its raw label.
+| `displayAs` | Renders | Uses |
+|---|---|---|
+| (none) | The value as text. | |
+| `link` | A link. | `urlColumn` for the address, `textColumn` for the text. |
+| `image` | An image. | `urlColumn` for the address. |
+| `action` | A button that fires `ir-action`. | `command`, and `keyColumn` for the row key. |
 
-## Edit links, create buttons, and column overrides
+- Link addresses may be relative or use `http`, `https`, `mailto` or `tel`. Image addresses may be relative or use `http` or `https`. Any other address, such as `javascript:` or `data:`, shows as plain text.
+- The source columns need not be visible. The server checks them against the schema and sends them as hidden row data.
+- `action` is set in a definition's `defaultState` or a document file. Column Settings does not offer it and keeps it when the user changes other settings. A row whose value is `NULL` shows no button. The administration page's listing uses this renderer.
+- A CSV download writes a link's text, an image's address and an action's label.
 
-A definition can also declare an APEX-style edit pencil, a create-record button, and
-per-column overrides — configuration, not report state:
+## Edit links, create buttons and column overrides
+
+A report definition can add an edit link to each row, a create button to the toolbar, and per-column settings:
 
 ```json
 "orders": {
-  "connection": "MainDb",
+  "dataSource": "MainDb",
   "sql": "SELECT ORDER_ID, CUSTOMER, AMOUNT, NOTES FROM ORDERS",
   "editLink": {
     "urlTemplate": "/orders/{ORDER_ID}/edit",
@@ -425,48 +291,39 @@ per-column overrides — configuration, not report state:
 }
 ```
 
-`editLink` renders a leading pencil column in grid view. Its `{COLUMN}` placeholders
-reference definition-schema columns; the referenced values travel as hidden row data (like
-renderer source columns), are URL-encoded into the template client-side, and the
-result is an ordinary anchor — middle-click and open-in-new-tab work, `target:
-"_blank"` adds `rel="noopener"`, and a row whose placeholder value is NULL shows no
-pencil. The edit column has an empty heading (its `label` is the accessible name and
-tooltip), never appears in column pickers, search, sorts, or filters, and is absent
-from CSV exports and grouped/pivoted/charted views.
+### Edit link
 
-`createLink` renders a primary-styled button on the toolbar, after **Actions**, in every
-view. Its `url` is a constant (there is no row yet, so placeholders are rejected at
-load), `label` is the button text (default *Create*), and `target` behaves as for the
-pencil. Unlike the toolbar's feature-driven controls it is never hidden by the
-`features` policy or a client override: configuring it is what shows it.
+| Setting | Default | Meaning |
+|---|---|---|
+| `urlTemplate` | required | The address, with at least one `{COLUMN}` placeholder. At most 2048 characters. |
+| `label` | `Edit` | Accessible name and tooltip of the pencil. |
+| `target` | `_self` | Browsing target. `_blank` adds `rel="noopener"`. |
+| `mode` | `navigate` | `navigate` renders a link. `event` renders a button that only fires `ir-edit`. |
 
-These destinations and targets are trusted application configuration. Custom URL
-schemes such as `myapp:orders/{ORDER_ID}` and named targets such as `OrderEditor`
-pass through to the browser or the host's event handler. Row values substituted
-into edit templates remain URL-encoded. URLs read from report rows by the Link
-and Image column renderers retain their separate protocol restrictions.
+The pencil is the first column of the Grid view. It has no heading, and appears in no column list, search, sort, filter, download or other view.
 
-### Observing edit and create activations
+Placeholders name columns of the base query. The server sends their values with each row, hidden when the column is, and the element encodes them into the address. A row with a `NULL` placeholder value shows no pencil. When a placeholder names a column the query does not return, the server logs a warning and the report has no edit column.
 
-Every activation of either control dispatches a bubbling, composed, **cancelable**
-CustomEvent from the report element: `ir-edit` with `{ url, row }` (the row copy
-includes the hidden template columns, so the key is always there) and `ir-create`
-with `{ url }`. In the default `"mode": "navigate"` the anchor then follows its URL
-unless a listener calls `preventDefault()`, which lets a host intercept selectively —
-route through a single-page-app router, say, and fall back to the real link for
-modifier clicks.
+### Create button
 
-A host that never wants navigation sets `"mode": "event"` on the link. The control is
-then rendered as a `<button>` with the same icon, label, and accessible name, so
-keyboard and assistive-technology activation behave like any button, and the event is
-its whole behavior. In event mode `createLink.url` may be omitted (`url` arrives as
-`null`); `editLink.urlTemplate` stays required because it is what declares which row
-values ride along with the event. Substitution still applies, so a NULL key
-withholds the pencil.
+| Setting | Default | Meaning |
+|---|---|---|
+| `url` | required in `navigate` mode | A constant address. Placeholders are rejected. |
+| `label` | `Create` | Button text. |
+| `target` | `_self` | Browsing target. |
+| `mode` | `navigate` | `navigate` renders a link. `event` renders a button that only fires `ir-create`. |
+
+The button follows **Actions** on the toolbar in every view. Configuring it shows it: `features` and control overrides do not hide it.
+
+Both addresses are trusted configuration, so a custom scheme such as `myapp:orders/{ORDER_ID}` or a named target passes through to the browser.
+
+### Opening the application's own editor
+
+Both controls fire a cancelable event on every activation, in either mode. In `navigate` mode the link then follows its address unless a listener calls `preventDefault()`. In `event` mode the event is the whole behavior, and `createLink.url` may be left out.
 
 ```js
 report.addEventListener("ir-create", event => {
-  event.preventDefault();          // no-op in event mode; cancels navigation otherwise
+  event.preventDefault();
   openOrderEditor(null);
 });
 
@@ -475,19 +332,21 @@ report.addEventListener("ir-edit", event => {
   openOrderEditor(event.detail.row.ORDER_ID);
 });
 
-// After the host saves, re-run the current document so the grid reflects the write
-// without disturbing the user's search, filters, sort, or page.
+// After the application saves, run the current document again. The grid shows the change
+// and keeps the user's search, filters, sort and page.
 await report.submitReportDocument(report.getReportDocument());
 ```
 
-The Workbench sample's `crud.html` page and the in-browser demo both host a slide-over
-editor on exactly this pattern.
+`event.detail.row` includes the hidden placeholder columns. The Workbench page `crud.html` and the live demo use this pattern for a slide-over editor.
 
-`columns` overrides one column at a time: `label` replaces `columnLabels` for that
-column (configuring both is rejected), `hideLabel` blanks the table heading while
-menus and dialogs keep the real name, `sortable: false` / `filterable: false` remove
-those controls (control breaks count as sorting; computed columns are always exempt),
-and `helpText` appears as a note in the column's header menu. The server also strips
-sorts, breaks, and filter rules that violate the restrictions from incoming documents
-into `ignored[]`, so saved reports created before a restriction degrade gracefully
-instead of erroring.
+### Column overrides
+
+| Setting | Meaning |
+|---|---|
+| `label` | The column's display label. Setting it here and in `columnLabels` for one column is an error. |
+| `hideLabel` | Shows the table heading without text. Menus and dialogs keep the label. |
+| `sortable: false` | Removes sorting and control breaks for the column. |
+| `filterable: false` | Removes filtering for the column. |
+| `helpText` | A note at the bottom of the column's heading menu. At most 1000 characters. |
+
+The server enforces `sortable` and `filterable`: it moves a sort, break or filter that breaks the rule from a submitted document into the result's `ignored` list. A saved report made before the restriction still loads. A `defaultState` that sorts or breaks on a column marked `sortable: false` stops startup.

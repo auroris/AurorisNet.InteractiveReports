@@ -1,8 +1,6 @@
 # Windows Authentication sample
 
-An ASP.NET Core host with a Windows-authenticated orders report, saved reports,
-administration, and CSV export. `Program.cs` registers the authentication and
-authorization hooks; `ReportAccess.cs` contains the application access rules.
+An ASP.NET Core host with a Windows-authenticated `orders` report, saved reports, the administration page and downloads. `Program.cs` registers authentication and the authorization callbacks, and `ReportAccess.cs` holds the application's access rules.
 
 ## Run
 
@@ -14,54 +12,36 @@ npm run build:client
 dotnet run --project samples/WindowsAuthentication --urls http://localhost:5044
 ```
 
-Open [the report](http://localhost:5044) in a browser that supports Windows
-Authentication. The host uses ASP.NET Core Negotiate authentication on Kestrel.
-Browser policy may require allowing integrated authentication for this address.
-Hosting requirements for IIS and Kerberos are covered in
-[Microsoft's Windows Authentication guide](https://learn.microsoft.com/en-us/aspnet/core/security/authentication/windowsauth?view=aspnetcore-10.0).
+Open <http://localhost:5044> in a browser that supports Windows Authentication. The host uses ASP.NET Core Negotiate authentication on Kestrel, and the browser's policy may have to allow integrated authentication for this address. [Microsoft's Windows Authentication guide](https://learn.microsoft.com/en-us/aspnet/core/security/authentication/windowsauth) covers IIS and Kerberos.
 
-The host creates three sample orders in `App_Data/reports.db`. Saved documents and
-administrator grants use the same explicitly configured database, with their tables
-created on first use. The database survives restarts and is ignored by Git. The
-process account needs write access to `App_Data`; Windows Authentication identifies
-the caller but does not impersonate that caller for SQLite access.
+The host creates three orders in `App_Data/reports.db`, which Git ignores. Saved reports and administrator grants use the same database, and their tables are created on first use. The process account needs write access to `App_Data`: Windows Authentication identifies the caller, and the host still opens the database as itself.
 
-## Bootstrap administration
+## Name the first administrator
 
-1. Open [whoami](http://localhost:5044/api/reports/whoami) and copy the exact `identity`
-   value. It normally has the form `DOMAIN\username` or `MACHINE\username`.
-2. Put that value in `InteractiveReport:Administrators` in `appsettings.json`. Escape
-   the backslash in JSON:
+1. Open <http://localhost:5044/api/reports/whoami> and copy the `identity` value. It normally reads `DOMAIN\username` or `MACHINE\username`.
+2. Put the value in `InteractiveReport:Administrators` in `appsettings.json`, with the backslash escaped:
 
    ```json
    "Administrators": [ "DOMAIN\\username" ]
    ```
 
-3. Restart and open [administration](http://localhost:5044/api/reports/admin).
-   Save a document from the report viewer first to have a document to administer.
+3. Restart, save a report from the viewer so there is something to administer, and open <http://localhost:5044/api/reports/admin>.
 
-Administrators can publish documents, choose defaults, reassign ownership, and
-manage further administrator grants. Configured bootstrap entries are read-only in
-the administration page. Identity matching is case-sensitive; use the value returned
-by `whoami`. Set `InteractiveReport:WhoamiEnabled` to `false` when bootstrap is complete.
+Matching is case-sensitive, so use the value exactly as `whoami` returns it. Entries from `appsettings.json` are read-only on the administration page. Set `InteractiveReport:WhoamiEnabled` to `false` when the administrators are set up.
 
-Windows Authentication supplies the current principal, not an account-search service.
-The administration pickers use identities already known to Interactive Reports.
-To search an organization's directory, register `UseUserDirectory(...)` with an
-application directory service as described in the [authorization guide](../../docs/AUTHORIZATION.md).
+Windows Authentication supplies the current caller and no account search. The account pickers on the administration page offer the identities the server already knows. To search a directory, register `UseUserDirectory(...)` as the [Integration API](../../docs/API.md#administration-user-directory) describes.
 
-## Authorization hooks
+## Access rules
 
-| Hook | Sample behavior |
+| Code | Behavior in this sample |
 |---|---|
-| `AddAuthentication(...).AddNegotiate()` and `UseAuthentication()` | Populate the caller's Windows principal. |
-| `Reports.Read` policy, named by the report definition | Require authentication; also require `ReportAccess:ReaderGroup` when configured. |
-| `UseAuthorization(...)` | Require `ReportAccess:ExporterGroup` for CSV export. Other known actions proceed to the library's ownership and administrator rules. Unknown actions are denied. |
-| Optional `UseAdministrators(...)` | Use `ReportAccess:AdministratorGroup` as the authority for administrator membership when configured. |
+| `AddAuthentication(...).AddNegotiate()` and `UseAuthentication()` | Set the caller's Windows principal. |
+| `Reports.Read` policy, named by the report definition | Requires sign-in, and membership of `ReportAccess:ReaderGroup` when that is set. |
+| `UseAuthorization(...)` | Requires membership of `ReportAccess:ExporterGroup` for downloads. Allows the other known actions, which the built-in owner and administrator rules still decide. Denies an action it does not know. |
+| `UseAdministrators(...)`, registered when `ReportAccess:AdministratorGroup` is set | Makes membership of that group the only source of administrator rights. |
+| `RequireAuthorization()` on the mapped routes | Requires sign-in for every API call. The packaged pages and browser assets stay anonymous and hold no report data. |
 
-By default, all authenticated Windows users can read the report and save private
-documents. Export is denied until an exporter group is configured. To restrict readers
-and enable exports for selected Windows groups, set:
+With the default settings, every authenticated Windows user can read the report and save private reports, and **downloads are denied** until an exporter group is set:
 
 ```json
 "ReportAccess": {
@@ -71,28 +51,15 @@ and enable exports for selected Windows groups, set:
 }
 ```
 
-Group checks call `ClaimsPrincipal.IsInRole` on the authenticated principal. Set
-existing domain or machine group names appropriate to your environment. An
-administrator still needs the reader group to access a restricted report and the
-exporter group to export it.
+Group checks call `ClaimsPrincipal.IsInRole` on the authenticated principal. An administrator still needs the reader group to open a restricted report and the exporter group to download.
 
-Leave `AdministratorGroup` empty to use the configured bootstrap accounts and the
-administration page's administrator editor. Setting it registers `UseAdministrators`:
-Windows group membership then replaces both sources, and the page hides that editor.
-Document administration remains available to members of the configured group.
+Leave `AdministratorGroup` empty to use the entries of `InteractiveReport:Administrators` and the administration page's Administrators editor. Setting it replaces both, and the page hides the editor.
 
-The operation callback can inspect `request.Resource.ReportName`, `SavedReport`, and
-`Candidate`, or resolve a scoped ACL service from `request.RequestServices`. Returning
-`true` permits the operation to continue; it cannot override a report policy,
-saved-document ownership, or an administrator requirement. In this sample, an
-administrator without the exporter group receives the same export denial as anyone else.
-
-The endpoint conventions require authenticated API calls. The library marks its
-packaged HTML and browser assets as anonymous; those responses contain no report data.
+A callback returns `true` to add no restriction. That does not override a report policy, saved-report ownership or the administrator check. [Authorization](../../docs/AUTHORIZATION.md) describes what a callback receives.
 
 ## Verify
 
-In PowerShell 7, while the sample is running:
+In PowerShell 7, while the sample runs:
 
 ```powershell
 Invoke-WebRequest http://localhost:5044/api/reports/orders/schema -SkipHttpErrorCheck
@@ -100,21 +67,16 @@ Invoke-RestMethod http://localhost:5044/api/reports/whoami -UseDefaultCredential
 Invoke-RestMethod http://localhost:5044/api/reports/orders/default -UseDefaultCredentials -AllowUnencryptedAuthentication
 ```
 
-The first request should receive `401` with a `WWW-Authenticate: Negotiate` header.
-The authenticated requests should return the caller's identity and three report rows.
-The PowerShell flag permits credential negotiation over the sample's local HTTP URL;
-use HTTPS for a deployed host.
+The first request answers `401` with a `WWW-Authenticate: Negotiate` header. The other two return the caller's identity and three report rows. `-AllowUnencryptedAuthentication` lets PowerShell negotiate over the sample's HTTP address; use HTTPS for a deployed host.
 
-Check these access boundaries with accounts in the corresponding groups:
+With accounts in the matching groups, check that:
 
-- A reader can query and save a private document; another reader cannot edit it.
-- A caller outside a configured reader group cannot query the report.
-- A caller outside the exporter group cannot export, even when an administrator.
-- A bootstrap administrator can manage saved documents and administrator grants.
-- After restarting, saved documents and administrator grants remain available.
+- a reader can query and save a private report, and another reader cannot change it;
+- a caller outside the reader group cannot query the report;
+- a caller outside the exporter group cannot download, administrator or not;
+- an administrator named in `appsettings.json` can manage saved reports and the administrator list;
+- saved reports and administrator grants are still there after a restart.
 
-The sample references the repository projects directly. In a separate application,
-replace those project references with `AurorisNet.InteractiveReports` and
-`AurorisNet.InteractiveReports.Client.FileDownload`. The main package includes the
-browser assets and brings in the server and core dependencies. Keep the explicit
-Negotiate and SQLite package references.
+## Use the packages
+
+The sample references the repository's projects. In another application, replace them with package references to `AurorisNet.InteractiveReports` and `AurorisNet.InteractiveReports.Client.FileDownload`, and keep the references to `Microsoft.AspNetCore.Authentication.Negotiate` and `Microsoft.Data.Sqlite`.

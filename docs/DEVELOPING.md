@@ -1,10 +1,10 @@
 # Developing
 
-The client-side source is in `src/client`; generated browser assets are written to
-`src/InteractiveReport.Client.Json/Ui/dist` for embedding by the server project. With
-Node.js 20 or later and the .NET 10 SDK installed, install the dependencies and
-Playwright's Chromium browser, build the browser assets, packaged help, and .NET
-solution, then start Workbench with:
+How to build the repository, run the Workbench host, and produce the packages. [Testing](TESTING.md) describes the test suites.
+
+## Set up and build
+
+You need the .NET 10 SDK, Node.js 20 or later, and Playwright's Chromium, which takes the screenshots of the packaged help.
 
 ```sh
 npm ci
@@ -13,185 +13,100 @@ npm run build
 npm run start
 ```
 
-Workbench runs at `http://127.0.0.1:5042`; stop it with Ctrl+C.
+On Linux, install Chromium with `npx playwright install --with-deps chromium` so its system libraries come with it.
 
-Workbench has no login: every request is authenticated as `workbench-dev`, which
-`appsettings.json` lists as an administrator, so the packaged pages and the
-policy-protected sample report open without credentials. A request that carries an
-`X-Workbench-User` header runs as that identity instead; the Playwright suite uses it to
-exercise denial, ownership, and non-administrator paths, and it is handy for trying them
-by hand.
+| Command | What it does |
+|---|---|
+| `npm run build` | Runs the three build steps below, in order. |
+| `npm run build:client` | Bundles `src/client` with esbuild into `src/InteractiveReport.Client.Json/Ui/dist`: `ir.js`, `ir-admin.js` and `ir-chart.js`, with source maps. |
+| `npm run build:help` | Takes the documentation screenshots, then renders the user guide into `Ui/dist/help.en.html`. |
+| `npm run build:dotnet` | Builds `InteractiveReport.slnx`. |
+| `npm run build:watch` | Rebuilds the bundles when a client source file changes. `npm run start:dev` is the same command. |
+| `npm run start` | Runs Workbench without building it. |
 
-On Linux, replace the Playwright installation command with
-`npx playwright install --with-deps chromium` so Chromium's system libraries are
-installed as well. Windows and Linux both support the normal build, Workbench, and
-test workflows.
+`Ui/dist` is not committed. The `Client.Json` project embeds its files, so a fresh checkout must run the client build before it runs the packaged UI. A Release build and `dotnet pack` fail with instructions when the bundles are missing.
 
-`npm run start:dev` (or `npm run build:watch`) rebuilds on changes. `npm test` builds
-the client and runs the fast DOM unit tests, browser-server tests, and documentation
-integrity tests. Browser automation is configured with Playwright; run
-`npm run test:e2e` for that layer. `npm run test:all` combines those JavaScript and
-browser layers. Run `dotnet test` separately for the Core, ASP.NET Core, and live-test
-projects; live database cases skip unless their connection variables are configured.
+## Workbench
 
-The generated `src/InteractiveReport.Client.Json/Ui/dist/ir.js`, `ir-admin.js`, and
-`ir-chart.js` files are embedded in the ASP.NET Core assembly and are deliberately
-not committed. A source checkout must run the client build before a Release build,
-a pack, or a run of the packaged UI — `dotnet pack` and `dotnet build -c Release`
-fail with instructions when the bundles are missing, so a UI-less package cannot
-ship silently. NuGet packaging is a Windows workflow. `scripts/pack.ps1` (also
-`npm run pack:nuget`) runs the complete build, the client unit tests, the Core and
-ASP.NET Core test projects, and `dotnet pack` for the five distributable projects into
-`artifacts/packages`. It does not run the browser-server, Playwright, or live-database
-suites. Use the manual GitHub Actions workflow below to publish a release, or
-`dotnet nuget push` to publish locally built packages yourself.
-Package consumers never need Node.js. `ir-chart.js` (the Chart.js-based chart
-renderer) is fetched on demand the first time a report enters chart view; pages
-that never chart never load it.
+`samples/Workbench` hosts every package over a seeded SQLite database at `http://localhost:5042`. Its start page shows a report and links the packaged viewer and administration pages, a French page (`fr.html`) and a page with an application-owned editor (`crud.html`). `embedding.html` shows two configured elements over one report. In Development, Workbench also serves Swagger UI at `/swagger` and GraphiQL at `/graphiql`.
 
-Each distributable project embeds its own `src/<project>/README.md` as the NuGet
-README. Keep these introductions focused on the package's role, dependencies,
-and which package a consumer should install; link to the full guides for detail.
-Use Markdown rather than raw HTML, absolute URLs for links, and images hosted on
-a [NuGet-supported domain](https://learn.microsoft.com/en-us/nuget/nuget-org/package-readme-on-nuget-org#allowed-domains-for-images).
-The repository's root README is separate and can retain its GitHub presentation.
-README changes reach nuget.org when a new package version is published.
+Workbench has no sign-in. Every request is authenticated as `workbench-dev`, which `appsettings.json` lists as an administrator. A request with an `X-Workbench-User` header runs as that identity instead. The Playwright suite uses the header to test denial, ownership and non-administrator paths.
 
-## Publishing a release from GitHub
+The database is `samples/Workbench/App_Data/sample.db`, which Git ignores.
 
-The [release workflow](../.github/workflows/release.yml) runs only when it is started:
-by hand from the Actions tab, or by the CI workflow after it merges a Dependabot update
-(see [Automatic dependency updates and releases](#automatic-dependency-updates-and-releases)).
-Pushes, tags, and pull requests never trigger it directly. Once the workflow is on the
-repository's default branch, open **Actions → Release NuGet packages → Run workflow**:
+## Packaged help and screenshots
 
-1. Select the branch or tag to release.
-2. Enter a semantic version such as `1.0.3` or `1.0.3-rc.1`, or leave it blank and pick a
-   **bump** (`patch` or `minor`) to increment the latest stable `v*` tag. The version
-   applies to every package and its internal dependencies without editing the repository.
-3. Leave **Also publish the packages to nuget.org** unchecked to create just the
-   GitHub Release, or check it after configuring Trusted Publishing below.
-4. Run the workflow. A first job validates the version and rejects an existing tag. The
-   build job then installs .NET 10, Node.js 24, and Chromium on Windows and runs
-   `scripts/release.ps1` with the build and test stages enabled, plus the documentation
-   checks.
+The [User guide](USER-GUIDE.md) is also the help page behind the report's **?** button. `scripts/build-help.mjs` renders every `docs/USER-GUIDE*.md` into one HTML file with its images embedded: `USER-GUIDE.md` becomes `help.en.html`, and a `USER-GUIDE.fr-CA.md` would become `help.fr-CA.html`. A locale without a page shows the English one.
 
-An optional `v` prefix is accepted. Versions use `MAJOR.MINOR.PATCH`, optionally followed
-by a prerelease suffix; build metadata (`+...`) is not supported. Numeric version components
-must be between 0 and 65534 to fit .NET assembly versions. Existing tags are rejected. A blank
-version bumps the highest `vMAJOR.MINOR.PATCH` tag; prerelease tags are ignored when choosing
-it. `Directory.Build.props` no longer supplies release versions: its `Version` is the
-development placeholder `0.0.0-dev`, which local builds and packs use unless a version is
-passed explicitly.
+The guide must therefore stand alone: its links to headings work in the help window, and a link to another file does not. Each heading gets the id GitHub would give it.
 
-Every successful build uploads an Actions artifact containing the five `.nupkg`
-files, five `.snupkg` symbol packages, and `SHA256SUMS.txt`. The next job verifies
-those checksums and publishes a GitHub Release tagged `v<version>` at the exact
-commit that was built, with generated release notes and all eleven files attached.
-Versions containing a prerelease suffix produce GitHub prereleases. Published releases
-and tags are never overwritten by this workflow; use a new version for a new release.
+`npm run build:screenshots` starts a temporary Workbench, drives the packaged viewer with Playwright, writes `docs/images/*.png`, and stops Workbench. `npm run build:help` and `npm run build` run it first, and so do the pack and release scripts.
 
-The optional NuGet job runs after the GitHub Release and publishes the same packages
-and their symbols. If NuGet publishing fails, the GitHub Release and Actions artifact
-remain available; correct the setup and use **Re-run failed jobs**. Already published
-package versions are skipped. The workflow does not change the version in Git or
-create a version-bump commit.
+- Stop a Workbench started with `npm run start` first: the capture needs port 5042.
+- The images change on a machine with other fonts or display scaling. Do not commit such changes by accident.
+- `IR_DOCS_BASE` changes the address, and `IR_HELP_IMAGE=avif` embeds AVIF in place of lossless WebP.
 
-### One-time nuget.org setup
+## Live demo
 
-This workflow uses [NuGet Trusted Publishing](https://learn.microsoft.com/en-us/nuget/nuget-org/trusted-publishing),
-so no long-lived NuGet API key is stored in GitHub:
+`npm run build:demo` builds the standalone demo into `demo/`: the browser bundle, the help page, and `src/browser-server`, a JavaScript implementation of the server routes over SQLite WebAssembly. `npm run start:demo` serves the folder locally. The demo is published at <https://interactive-report.pages.dev/>.
 
-1. In nuget.org, sign in as `AurorisNet` and create a
-   Trusted Publishing policy with repository owner `auroris`, repository
-   `Interactive-Reports`, and workflow file **`release.yml`** (just the filename).
-   Leave the environment field empty; this workflow does not use an environment.
-2. Scope the policy to `AurorisNet.InteractiveReports*` and allow both publishing new
-   packages and new versions. The first publication must be permitted to create all
-   five package IDs listed in [Architecture](ARCHITECTURE.md#package-and-dependency-structure).
-   Package IDs must be available or owned by your account; the workflow does not
-   reserve the name in advance.
+`src/browser-server` exists for the demo only. The .NET server defines the behavior.
 
-The workflow sets the NuGet login username to `AurorisNet` directly; no GitHub
-repository variable is needed.
+## Package READMEs
 
-GitHub Releases use the workflow's built-in `GITHUB_TOKEN` with `contents: write`;
-no personal access token is required. The NuGet job alone requests `id-token: write`
-to exchange its GitHub identity for a short-lived publishing key.
+Each library packs the `README.md` in its project folder as its nuget.org page. Keep these pages short: what the package adds, how to install it, and a link to the repository README. nuget.org needs Markdown without HTML and absolute links, and shows images only from [allowed domains](https://learn.microsoft.com/en-us/nuget/nuget-org/package-readme-on-nuget-org#allowed-domains-for-images). A change reaches nuget.org with the next release.
 
-## Cutting a release locally
+## Pack and release locally
 
-On Windows, `scripts/release.ps1` (also `npm run release:nuget`) runs the pack pipeline and drops a
-complete, versioned package set into `releases/<version>/`: the five `.nupkg` files,
-their `.snupkg` symbol packages, and a `SHA256SUMS.txt` manifest. Without `-Version`,
-the packages carry the development placeholder `0.0.0-dev` from `Directory.Build.props`;
-pass `-Version 1.0.3` or `-Version 1.0.0-rc.1` for a real one, `-SkipTests` to pack
-without the test layers, and `-Force` to replace a folder that already holds packages.
-The `releases/` folder is git-ignored. Nothing is pushed: publishing is a manual
-`dotnet nuget push releases/<version>/*.nupkg`.
+The two scripts are PowerShell and use Windows paths.
+
+`scripts/pack.ps1`, or `npm run pack:nuget`, runs the pipeline that CI runs:
+
+1. `npm ci`, unless `-SkipInstall` is given.
+2. `npm run build`.
+3. The client unit tests and the Core and ASP.NET Core test projects, unless `-SkipTests` is given.
+4. `dotnet pack` of the five projects in Release, into `artifacts/packages` or the folder given with `-Output`.
+5. A check that each package and its symbol package exist.
+
+The version is `-Version`, or `0.0.0-dev` from `Directory.Build.props`.
+
+`scripts/release.ps1`, or `npm run release:nuget`, wraps `pack.ps1` to produce a complete release folder:
+
+```powershell
+pwsh scripts/release.ps1 -Version 1.2.3
+```
+
+It writes the five `.nupkg` files, the five `.snupkg` symbol packages and `SHA256SUMS.txt` to `releases/<version>/`, which Git ignores. It rejects a version that is not `MAJOR.MINOR.PATCH` with an optional prerelease suffix, and a folder that already holds packages unless `-Force` is given. `-SkipTests` and `-SkipInstall` pass through to `pack.ps1`.
+
+Neither script publishes. `release.yml` runs `release.ps1` and then publishes the folder.
 
 ## Automatic dependency updates and releases
 
-[Dependabot](../.github/dependabot.yml) checks NuGet packages daily, so a new .NET
-servicing release is picked up within a day, and npm packages and GitHub Actions weekly.
-It opens grouped pull requests. For NuGet: one for the .NET platform packages
-(`Microsoft.Extensions.*`, `Microsoft.AspNetCore.*`, `Microsoft.Data.Sqlite`, `System.*`,
-the primary dependency), one for GraphQL.NET, one for test-only packages, and one for
-everything else. For npm: one for the packages bundled into the browser client or used
-to build the packaged help (esbuild, chart.js, big.js, intl-messageformat, marked, sharp),
-one for test tooling (Playwright, happy-dom), and one for the demo's sql.js. Workflow
-actions get one pull request. The platform packages stay on the current .NET major;
-Dependabot never proposes a major update of them.
+The [release guide](https://github.com/auroris/AurorisNet.Build/blob/main/docs/releasing.md) describes the workflows, version numbers, the inputs of `release.yml` and nuget.org trusted publishing. This section lists what is specific to this repository.
 
-The [CI workflow](../.github/workflows/ci.yml) runs the release pipeline without a
-version on Windows for every pull request and for pushes to `main`: the client build,
-the client unit tests, the Core and ASP.NET Core test projects, `dotnet pack`, and the
-browser-server and documentation tests. The live-database suite skips itself because no
-`IR_TEST_*` connection string is set. For a Dependabot pull request that passes, the
-final job:
+**Primary dependency.** The .NET platform packages: `Microsoft.Extensions.*`, which the libraries reference, and the packages that move with them in the monthly .NET servicing release.
 
-1. Squash-merges the pull request into `main` and deletes the branch.
-2. Starts the Release NuGet packages workflow on `main` with a blank version and
-   nuget.org publishing enabled. A minor update of a NuGet package referenced by one of
-   the five packable projects bumps the minor version; patch updates, and every npm
-   update, bump the patch version. The release then runs exactly as a manual one.
+**Dependabot** ([`dependabot.yml`](../.github/dependabot.yml)) checks NuGet each day, and npm and workflow actions each week. It groups its pull requests:
 
-No release is started when nothing shipped changes: packages that only the samples or
-tests reference, npm test tooling, the demo's sql.js, and workflow actions. Which NuGet
-packages ship is read from the project files under `src/` at merge time, so adding a
-package to a library needs no workflow change. Major updates of packages other than the
-.NET platform still open pull requests and run CI, but are left for manual review with a
-comment explaining why; after merging one by hand, start the release workflow yourself
-if it should ship. Major updates of workflow actions merge automatically: the CI run that
-approves them already used the updated actions.
+| Ecosystem | Group | Packages |
+|---|---|---|
+| NuGet | `dotnet` | `Microsoft.Extensions.*`, `Microsoft.AspNetCore.*`, `Microsoft.Data.Sqlite`, `System.*`. Major updates are ignored: a new .NET major is a deliberate upgrade. |
+| NuGet | `graphql` | `GraphQL*`: the GraphQL adapter and Workbench's GraphiQL page move together. |
+| NuGet | `test-dependencies` | xunit, the test SDK, coverlet, and the database drivers the tests use. |
+| NuGet | `dependencies` | Everything else, such as SqlKata. |
+| npm | `client` | Packages bundled into the browser UI or used to build the help page: esbuild, chart.js, big.js, intl-messageformat, marked, sharp. |
+| npm | `test-tooling` | Playwright and happy-dom. |
+| npm | `demo` | sql.js. |
 
-Dependabot workflows run with a read-only token, so the merge job requests `contents`,
-`pull-requests` and `actions` write permissions explicitly. Starting the release workflow
-through `workflow_dispatch` is the one way a workflow can trigger another with the built-in
-token, which is why CI does not rely on a push trigger (a merge made with that token also
-starts no CI run on `main`). Several updates merged close together each queue a release;
-GitHub keeps one pending release run and cancels the ones between, and the last run still
-ships everything that was merged.
+**CI** ([`ci.yml`](../.github/workflows/ci.yml)) runs on each pull request, on Windows: `scripts/pack.ps1`, then the browser-server tests and the documentation tests. The live-database tests skip there, because no `IR_TEST_*` variable is set.
 
-To pause automation, remove or edit `.github/dependabot.yml`; to keep the updates but review
-them yourself, delete the `dependabot` job from `ci.yml`.
+**What starts a release.** After CI passes on a Dependabot pull request, the workflow merges it and starts `release.yml` when the update ships:
 
-## Documentation assets
+- a NuGet package that a project under `src/` references. The project files are read at merge time, so a new reference needs no workflow change;
+- any npm package except `@playwright/test`, `playwright`, `happy-dom` and `sql.js`, because the browser bundle and help page are built from npm packages and embedded in `AurorisNet.InteractiveReports`.
 
-The [User Guide](USER-GUIDE.md) is also the in-app help: `npm run build:help`
-(part of `npm run build`) renders it to `Ui/dist/help.<locale>.html` with the
-screenshots inlined as lossless WebP, and the report's **?** button opens that page in
-a window. Regenerate the screenshots from a temporary Workbench instance with:
+Updates of test packages, sample-only packages and workflow actions merge without a release.
 
-```sh
-npm run build:screenshots
-```
+**One release** ([`release.yml`](../.github/workflows/release.yml)) publishes all five packages with one version, their symbol packages and `SHA256SUMS.txt`.
 
-The command starts Workbench, waits for it to accept requests, drives the packaged
-viewer with Playwright, and stops Workbench even when capture fails. The capture widens
-the window until the toolbar fits on one row, adds the numbered callouts, and writes
-`docs/images/*.png`. `npm run build:help` performs the same capture before rebuilding
-the packaged help pages, and so does `npm run build`, which `pack.ps1` and
-`release.ps1` run: stop a Workbench you started with `npm run start` first, because the
-capture needs port 5042, and expect the screenshot files to change on a machine with
-different fonts or display scaling.
+Run the live-database tests on your machine before a release that changes the engine: see [Testing](TESTING.md#live-database-tests).

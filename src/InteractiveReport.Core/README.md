@@ -1,58 +1,37 @@
 # AurorisNet.InteractiveReports.Core
 
-The database query engine behind Interactive Reports, an Oracle APEX-style
-reporting library for .NET. It turns a trusted report definition and a user's
-report state into validated, parameterized SQL for SQLite, SQL Server,
-PostgreSQL, or Oracle.
+The engine of [Interactive Reports](https://github.com/auroris/AurorisNet.InteractiveReports/blob/main/README.md). It turns a trusted report definition and a user's report document into validated, parameterized SQL for SQL Server, PostgreSQL, Oracle or SQLite, runs it, and shapes the result.
 
-This package contains report and state models, the expression language, schema
-discovery, validation, query planning and execution, and saved-report storage
-contracts and implementations. It targets .NET 8 and has no ASP.NET Core dependency.
+The package holds the report and document models, the expression language, schema discovery, validation, SQL generation, execution, and the saved-report and administrator stores. It targets .NET 8 and has no ASP.NET Core dependency.
 
-## Which package should I install?
+## Install
 
-**For interactive reports in an ASP.NET Core website, install
-[AurorisNet.InteractiveReports](https://www.nuget.org/packages/AurorisNet.InteractiveReports/).**
-It includes the browser UI and REST API, and brings in this engine and the
-ASP.NET Core server automatically:
+Most applications install [AurorisNet.InteractiveReports](https://www.nuget.org/packages/AurorisNet.InteractiveReports/), which adds the REST API and the browser UI and brings in this package.
 
-```sh
-dotnet add package AurorisNet.InteractiveReports
-```
-
-Reference Core directly when building a custom host, working with report models,
-or calling the engine without the ASP.NET Core integration:
+Reference Core by itself to work with the report models or to call the engine outside ASP.NET Core:
 
 ```sh
 dotnet add package AurorisNet.InteractiveReports.Core
 ```
 
-Core provides no browser UI or HTTP endpoints. Direct engine callers supply the
-database connections, resolved definitions, trusted context, and authorization
-decisions. In an ASP.NET Core request, use the server package's
-`IInteractiveReportServer` to retain the shared authorization and saved-report
-behavior.
+`ReportExecutor` runs a report document against a resolved definition. It performs no authorization: the caller supplies the database connections, the definition and the context parameters, and decides who may run the report. In an ASP.NET Core request, use `IInteractiveReportServer` from the server package, which applies the authorization and saved-report rules.
 
-## How the packages fit together
+The application references the ADO.NET driver of its database.
 
-| Package | When to choose it |
+## Related packages
+
+| Package | Adds |
 |---|---|
-| [AurorisNet.InteractiveReports](https://www.nuget.org/packages/AurorisNet.InteractiveReports/) | The usual starting point: browser viewer, administration, and REST API. Includes the server and Core. |
-| [AurorisNet.InteractiveReports.AspNetCore](https://www.nuget.org/packages/AurorisNet.InteractiveReports.AspNetCore/) | Server-side .NET integration or custom endpoints with configuration and authorization. Includes Core. |
-| [AurorisNet.InteractiveReports.Client.FileDownload](https://www.nuget.org/packages/AurorisNet.InteractiveReports.Client.FileDownload/) | CSV and self-contained HTML downloads. Includes the server and Core. |
-| [AurorisNet.InteractiveReports.Client.GraphQL](https://www.nuget.org/packages/AurorisNet.InteractiveReports.Client.GraphQL/) | Query saved reports through GraphQL.NET. Includes the server and Core. |
+| [AurorisNet.InteractiveReports](https://www.nuget.org/packages/AurorisNet.InteractiveReports/) | REST API, viewer and administration pages, and the browser element. |
+| [AurorisNet.InteractiveReports.AspNetCore](https://www.nuget.org/packages/AurorisNet.InteractiveReports.AspNetCore/) | Configuration, authorization and `IInteractiveReportServer`. |
+| [AurorisNet.InteractiveReports.Client.FileDownload](https://www.nuget.org/packages/AurorisNet.InteractiveReports.Client.FileDownload/) | CSV and HTML downloads. |
+| [AurorisNet.InteractiveReports.Client.GraphQL](https://www.nuget.org/packages/AurorisNet.InteractiveReports.Client.GraphQL/) | A query-only GraphQL endpoint for saved reports. |
 
-Every other Interactive Reports package depends on Core, directly or through the
-server. Installing Core alone does not install those higher-level packages. The
-host application supplies its database's ADO.NET driver.
-
-NuGet IDs use `AurorisNet.InteractiveReports`; C# namespaces remain
-`InteractiveReport.*`. All five packages are released together at the same version.
+The five packages are released together. Use one version for all of them. C# namespaces are `InteractiveReport.*`.
 
 ## Documentation
 
-- [Architecture and package boundaries](https://github.com/auroris/Interactive-Reports/blob/main/docs/ARCHITECTURE.md)
-- [Integration API, including direct engine calls](https://github.com/auroris/Interactive-Reports/blob/main/docs/API.md)
-- [Getting started with browser reports](https://github.com/auroris/Interactive-Reports/blob/main/docs/GETTING-STARTED.md)
-- [Interactive demo](https://interactive-report.pages.dev/)
-- [Source and issues](https://github.com/auroris/Interactive-Reports)
+- [Repository README](https://github.com/auroris/AurorisNet.InteractiveReports/blob/main/README.md)
+- [Architecture](https://github.com/auroris/AurorisNet.InteractiveReports/blob/main/docs/ARCHITECTURE.md)
+- [Integration API, with direct engine calls](https://github.com/auroris/AurorisNet.InteractiveReports/blob/main/docs/API.md#execute-in-process)
+- [Live demo](https://interactive-report.pages.dev/)

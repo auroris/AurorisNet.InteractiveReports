@@ -1,27 +1,21 @@
 # Browser UI tests
 
-The shared Playwright configuration starts the real Workbench on
-`http://127.0.0.1:5042` and runs these tests in Chromium. Locators use accessible roles
-and labels through the components' open shadow roots, so the scenarios exercise the UI
-as a user sees it rather than calling component methods.
-
-The test server always starts as a fresh process and redirects saved reports to
-`test-results/ui/workbench-saved.db`. Browser runs therefore neither reuse an
-incompatible developer server nor modify `samples/Workbench/App_Data`.
-
-`application.spec.js` covers direct report configuration, a configured report document,
-query, search, paging, report-attribute changes, CSV export, saved-report persistence, administration,
-and non-administrator authorization. Saved reports use random names and are removed in
-`finally` blocks so failed or interrupted scenarios leave little test data behind.
-
-The `composition-*.spec.js` files exercise the canonical composable planner across the
-complete browser/server boundary: semantic ordering independent of storage position,
-parent Export versus owner-local results, highlight precedence, Pivot continuations and
-metric provenance, safe format lineage, transactional validation rollback, CSV parity,
-and break totals across page boundaries. `support.js` seeds temporary private saved
-states so adversarial and deep table graphs still load through the public persistence UI;
-each scenario deletes its state in `finally` and remains safe under parallel execution.
+Playwright tests that drive the packaged UI in Chromium against a real Workbench host.
 
 ```sh
 npm run test:e2e
 ```
+
+The shared configuration, `playwright.config.js`, starts a new Workbench process on `http://127.0.0.1:5042` for each run and never reuses a running one. It stores saved reports in `test-results/ui/workbench-saved.db`, so a run leaves `samples/Workbench/App_Data` alone.
+
+Locators use accessible roles and labels through the elements' open shadow roots. The tests therefore use the UI as a user does and call no element methods.
+
+| File | Covers |
+|---|---|
+| `application.spec.js` | Report loading, a configured document, query, search, paging, changes of the element's attributes, CSV download, saved reports, the administration page, and what a non-administrator may do. |
+| `composition-*.spec.js` | The engine through the browser and server together: operation order independent of the order in the document, a parent table's export against a table's own result, highlight precedence, pivots, format inheritance, rollback after a validation error, CSV content, and break totals across pages. |
+| `lov-filter.spec.js` | Filtering through the value picker. |
+| `packaged-pages.spec.js` | The packaged viewer and administration pages. |
+| `support.js` | Helpers that create temporary private saved reports, so a test can load a deep or hostile document through the UI. |
+
+Tests give their saved reports random names and delete them in `finally` blocks, so they can run in parallel and leave little behind when one fails.

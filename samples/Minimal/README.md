@@ -1,12 +1,10 @@
-# Minimal Interactive Reports host
+# Minimal sample
 
-A report-only ASP.NET Core application with one anonymous orders report and an
-explicit `Microsoft.Data.Sqlite` dependency. It uses the packaged viewer and JSON
-API. Saved-report persistence is not configured.
+An ASP.NET Core host with one anonymous `orders` report over SQLite. It uses the packaged viewer page and the JSON API, and configures no saved-report storage.
 
-## Run from this repository
+## Run
 
-Requires the .NET 10 SDK and Node.js 20 or later. From the repository root:
+You need the .NET 10 SDK and Node.js 20 or later. From the repository root:
 
 ```sh
 npm ci
@@ -14,34 +12,9 @@ npm run build:client
 dotnet run --project samples/Minimal --urls http://127.0.0.1:5043
 ```
 
-Open [the report](http://127.0.0.1:5043). The root redirects to
-`/api/reports/orders/view`. Stop the server with Ctrl+C.
+Open <http://127.0.0.1:5043>. The root redirects to `/api/reports/orders/view`. Stop the server with Ctrl+C.
 
-The sample host creates three orders in a shared in-memory SQLite database at
-startup and keeps one connection open so the report can read them. The data is
-discarded when the process exits. Interactive Reports does not create the database.
-
-## What to copy
-
-- `Minimal.csproj` references the server, JSON client, and SQLite provider.
-- `Program.cs` registers the two services and maps the JSON endpoints.
-- `appsettings.json` supplies the connection string, provider metadata, and report SQL.
-
-For an application outside this repository, replace the two `ProjectReference`
-entries with one NuGet reference to `AurorisNet.InteractiveReports`, which brings in
-the server and core dependencies. Keep the explicit SQLite package reference. The
-JSON client NuGet package includes the browser assets, so a consuming application
-does not need the npm build steps.
-
-To use an existing SQLite database, remove the sample connection's `using` block
-and the `CreateSampleData` method from `Program.cs`, keeping the service registration,
-endpoint mapping, and `app.RunAsync()` call. Change `ConnectionStrings:SampleDb` to your database's connection
-string, and update the report SQL. The `SampleDb_ProviderName` setting identifies
-the provider explicitly.
-
-The report allows anonymous access for this example. For an authenticated report,
-integrate your application's authentication and remove `allowAnonymous`. See the
-[getting-started guide](../../docs/GETTING-STARTED.md) for further integration options.
+At startup the host creates three orders in a shared in-memory SQLite database and keeps one connection open so that report requests can read them. The data is gone when the process exits.
 
 ## Check the API
 
@@ -50,4 +23,20 @@ curl http://127.0.0.1:5043/api/reports/orders/schema
 curl http://127.0.0.1:5043/api/reports/orders/default
 ```
 
-The default response's `result.rows` contains the three sample orders.
+`result.rows` in the second response holds the three orders.
+
+## What to copy
+
+| File | Shows |
+|---|---|
+| `Minimal.csproj` | References to the server, the JSON client and `Microsoft.Data.Sqlite`. |
+| `Program.cs` | The two service registrations and the endpoint mapping. |
+| `appsettings.json` | The connection string, its provider name and the report's SQL. |
+
+In an application outside this repository:
+
+- Replace the two project references with one package reference to `AurorisNet.InteractiveReports`, and keep the reference to `Microsoft.Data.Sqlite`. The package contains the browser bundle, so the npm steps are not needed.
+- To use an existing SQLite database, remove the connection's `using` block and the `CreateSampleData` method from `Program.cs`, set `ConnectionStrings:SampleDb` to your connection string, and change the report's SQL. `ConnectionStrings:SampleDb_ProviderName` tells the server which driver the connection string is for.
+- For a report that requires sign-in, add the application's authentication and remove `allowAnonymous` from the report.
+
+[Getting started](../../docs/GETTING-STARTED.md) continues from here.

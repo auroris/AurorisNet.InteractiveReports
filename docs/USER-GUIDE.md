@@ -1,9 +1,8 @@
 # Interactive Report — User Guide
 
-This guide explains how to use an interactive report: how to search, filter, sort,
-shape, save, and download the data a report shows you. It covers everything the report
-can offer. Your report may hide some of these controls, because each report decides
-which features it makes available.
+How to use an interactive report: search, filter, sort, shape, save and download the data
+it shows. The guide covers every feature. A report offers only the features its author
+chose, so yours may show fewer controls.
 
 Contents
 
@@ -145,7 +144,7 @@ Click any column heading to open its menu.
 | **Rename…** | Changes the column heading shown in this report. Expressions keep using the original column name. Leave the box blank to restore the default heading. |
 | **Column Settings…** | Opens the column's display settings (alignment, format, colours, link or image display). See [Column Settings](#column-settings). |
 | **Hide Column** | Removes the column from the report. Use **Actions → Columns…** to bring it back. The last visible column cannot be hidden. |
-| **Control Break** | Groups rows by this column. A ✓ shows the column is already a break; choosing it again removes the break. |
+| **Control Break** | Groups rows by this column. On a column that is already a break, the entry reads **Remove Control Break**, with a ✓, and removes the break. |
 | **Filter by Value…** | Picks a value from a list of the column's actual values and filters to it. See [Filter by Value](#filter-by-value). |
 | **Filter…** | Opens the filter editor with this column already inserted. |
 
@@ -180,8 +179,9 @@ are not shown at all.
 | [Pivot…](#pivot) | Cross-tabulate two sets of columns. |
 | [Chart…](#chart) | Draw the data as a bar, line, area, or pie chart. |
 | **Report ▸** Save / Save As… / Delete… | Manage saved reports. See [Saved reports](#saved-reports). |
-| **Reset** | Discard unsaved changes and return to the saved layout. Kept on the main menu so it is always one pick away. |
+| **Reset** | Discard unsaved changes and return to the saved layout. |
 | **Download ▸** CSV, HTML | Download the current report. See [Downloading](#downloading). |
+| **Print…** | Opens the application's print window. Shown only when the application provides one. |
 
 Every dialog has an **Apply** button (sometimes named for the action, such as **Save**)
 and **Cancel**. Applying re-runs the report straight away. If the server rejects the
@@ -292,7 +292,7 @@ always sort before these; in a Pivot the row dimensions come first.
 
 ### Pagination
 
-**Pagination** opens a submenu rather than a window. Pick the number of rows per page:
+**Pagination** opens a submenu. Pick the number of rows per page:
 10, 25, 50, 100, 500, or 1000 (up to the maximum the report allows), or **All**, which
 returns every matching row in one page. The current choice is ticked in the submenu and
 shown beside the **Pagination** entry itself, and the report re-runs as soon as you pick.
@@ -417,9 +417,9 @@ is also what screen readers and copy-and-paste use.
 ## Writing expressions
 
 Filters, highlights, and computed columns share one small expression language. It looks
-like SQL but is deliberately limited and portable: the same expression works on every
-database the report may run on. The dialog's **Columns**, **Functions**, and
-**Conditions** buttons insert each piece with the right spelling.
+like SQL, and an expression works the same on every database a report may run on. The
+dialog's **Columns**, **Functions**, and **Conditions** buttons insert each piece with the
+right spelling.
 
 ### Basics
 
@@ -535,24 +535,22 @@ Very large CSV reports are cut off at the row limit the report's author has set.
 happens, a notice says *Export truncated at the report's row cap*: add filters to narrow
 the data and download again.
 
-**Actions → Download → HTML** downloads a complete document with its styles included,
-ready to open in a browser or send to a document-rendering service. It uses the same
-current report settings and all matching rows, and includes control-break subtotals and
-aggregate totals. Chart views export their data table. The document includes alternating
-row shading, aligned numeric columns, and distinct group headings and totals. Printing
-or saving to PDF from a browser uses A4 portrait pages with repeating column headers;
-rows are kept together where they fit on a page. Print styles remove the screen's
-surrounding card and shadow. Wide tables scroll horizontally on smaller screens.
-No printing service or plugin is required. If the row limit or HTML size limit would
-produce an incomplete document, the download is refused: narrow the filters and try again.
+**Actions → Download → HTML** downloads one document with its styles included, ready to
+open in a browser. It uses the same report settings and every matching row, and includes
+control-break subtotals and aggregate totals. A Chart view downloads as its data table.
+Printing the document, or saving it as PDF from the browser, gives A4 portrait pages that
+repeat the column headings and keep each row on one page. When the row limit or the size
+limit would leave the document incomplete, the download is refused: add filters to narrow
+the data and try again.
 
 ---
 
 ## Paging, status, and messages
 
-- **Pager.** ‹ and › move one page back or forward. Between them, *1 – 50 of 500 rows*
-  shows which rows you are looking at (groups in Group By view, points in Chart view).
-  The right-hand side shows how long the query took in milliseconds.
+- **Pager.** « and » move to the first and last page, ‹ and › one page back or forward.
+  Between them, *1 – 50 of 500 rows* shows which rows you are looking at (groups in Group
+  By view, points in Chart view). The right-hand side shows how long the query took in
+  milliseconds.
 - **Busy strip.** A thin animated line under the toolbar shows a query in progress.
   Quick successive changes are combined into one query.
 - **Green message.** Confirmations such as *Report saved.* disappear on their own.
@@ -570,9 +568,9 @@ produce an incomplete document, the download is refused: narrow the filters and 
 
 ## Windows, menus, and keyboard use
 
-**Dialogs are windows, not pop-ups that block the page.** You can keep a Filter or
-Highlight window open while you scroll the report, and open several windows at once.
-Click a window to bring it to the front.
+**Dialogs are windows that leave the page usable.** You can keep a Filter or Highlight
+window open while you scroll the report, and open several windows at once. Click a window
+to bring it to the front.
 
 | Action | How |
 |---|---|
@@ -609,20 +607,20 @@ the language. Numbers, dates, and currencies follow that language.
 
 ## Appendix: the administration page
 
-Administrators have a separate page that lists every saved report of every report
-family in one place. Everyone else sees an *Administrator access required* message
-there. The list is itself an interactive report, so you can search, sort, filter, and
-download it exactly as described above.
+Administrators have a separate page that lists every saved report of every report in one
+place. Everyone else sees an *Administrator access required* message there. The list is
+itself an interactive report, so you can search, sort, filter, and download it as
+described above.
 
-Each row shows the report family, the saved report's **Title**, its **Owner**, its
-**Scope** (*Private*, *Global*, or a configured read-only document), whether it is the
-family's **Default**, and when it was last modified (UTC). The buttons at the end of a
-row act on that saved report:
+Each row shows the report, the saved report's **Title**, its **Owner**, its **Scope**
+(*Private*, *Global*, or *Read only* for a report built into the application's
+configuration), whether it is the report's **Default**, and when it was last modified
+(UTC). The buttons at the end of a row act on that saved report:
 
 | Button | What it does |
 |---|---|
 | **Publish / Unpublish** | Makes a private saved report visible to everyone with access to the report, or makes a global one private again. |
-| **Make default** | Makes this saved report the layout the report opens with. The current default cannot simply be unset; choose another one instead. Not offered when the default is fixed by the application's configuration. |
+| **Make default** | Makes this saved report the layout the report opens with. To change the default, make another saved report the default. Not offered when the default is fixed by the application's configuration. |
 | **Reassign** | Hands the saved report to another user. Search the users the application knows and pick one, or type the user's identity value exactly as the sign-in reports it. |
 | **State** | Shows the saved report's stored settings as JSON. |
 | **Download** | Downloads those settings as a JSON file that can be kept, shared, or uploaded again. |
@@ -635,7 +633,7 @@ Above the list:
 
 - **Refresh** reloads the list.
 - **Upload JSON…** imports a report document file (such as one produced by
-  **Download**) as your own private saved report under the report family you choose.
+  **Download**) as your own private saved report under the report you choose.
   It can be published afterwards.
 - **Administrators…** shows who may use this page and lets you set that list: search
   for users to add, remove entries, then **Save** the list as a whole. Entries that

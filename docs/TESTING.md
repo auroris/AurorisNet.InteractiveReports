@@ -1,208 +1,128 @@
 # Testing
 
-## Everyday suite
+The test suites, what each needs, and how to set up the databases for the live-database tests.
 
-```sh
-dotnet test
-npm test
-```
+## Suites
 
-The Core and ASP.NET test projects run with zero infrastructure (SQLite in-memory).
-Coverage: canonical planner/lowerer/terminal goldens ×4 dialects (exact SQL and ordered
-bindings), the row-condition corpus × dialect matrix, expression
-parser/emitter, the shared computed/filter/highlight rule plan (including disabled-rule
-elision), validator rules, SQL-safety corpus, saved-report store, CSV writer, and
-end-to-end engine passes. The ASP.NET suite also starts a real local server over a clean
-file-backed SQLite report database. It obtains the synthetic default report document
-from the schema endpoint, queries it, adopts the server-enriched document returned
-beside the data, and saves that document under a random title,
-restarts the server, and loads it again. It exercises an explicitly configured SQLite
-connection string first, then points saved-report persistence at a registered report
-database and repeats the restart/load check. A separate HTTP test proves that a
-report-only host creates no persistence directory, database, or table, lists a report's
-saved reports as empty, and fails direct persistence and administration requests cleanly
-until storage is configured.
+| Command | Suite | Needs |
+|---|---|---|
+| `dotnet test` | `InteractiveReport.Core.Tests` and `InteractiveReport.AspNetCore.Tests`, on in-memory and file-backed SQLite. Also the live-database project, whose tests skip without their variables. | .NET 10 SDK |
+| `npm test` | Builds the client, then runs the three suites below. | Node.js |
+| `npm run test:unit` | Element tests in `tests/ui/*.test.js`, on happy-dom. | Node.js |
+| `npm run test:server` | Tests of the demo's `src/browser-server`. | Node.js |
+| `npm run test:docs` | Documentation checks in `tests/docs`. | Node.js |
+| `npm run test:e2e` | Playwright tests in `tests/ui/e2e`, against Workbench. | Chromium |
+| `npm run test:all` | `npm test` and `npm run test:e2e`. | |
 
-`npm test` builds the packaged client and runs the fast DOM-level unit suite with
-Node.js and happy-dom, the browser-server suite, and the documentation integrity tests.
-Those documentation tests validate local links and anchors, referenced npm scripts,
-and retired API names. The ASP.NET Core suite also contains documentation contract tests
-that compare documented routes, feature tokens, and authorization actions with the public
-code surface.
+CI runs the Core and ASP.NET Core projects, the element tests, the browser-server tests and the documentation checks on each pull request. The Playwright and live-database tests run on a developer's machine.
 
-## Browser UI automation
+### What the .NET projects cover
 
-Playwright is configured to run Chromium against the real Workbench host. Install the
-browser once, then run the browser suite:
+- **Core**: exact SQL and parameter order for each of the four dialects, the expression parser and emitter, document validation, SQL-safety cases, the saved-report and administrator stores, the CSV writer and HTML renderer, and end-to-end runs on SQLite.
+- **ASP.NET Core**: the mapped routes on a real local server: authorization and denial responses, saved reports across a restart, configured documents, row restrictions, GraphQL, downloads and OpenAPI metadata. One test confirms that a host without saved-report storage creates no database, file or table.
+
+### Documentation checks
+
+`npm run test:docs` reads every Markdown file in the repository and fails when:
+
+- a relative link or a heading anchor does not resolve;
+- an `npm run` command names a script that `package.json` does not have;
+- a code fence has no language, or is not closed;
+- a page uses a retired API name.
+
+`DocumentationContractTests` in the ASP.NET Core project compares the documentation with the code. It requires `docs/API.md` to list every mapped route with its method and every feature token, `docs/AUTHORIZATION.md` to list every `InteractiveReportAction`, and `docs/GRAPHQL.md` to list every argument of the `report` field with its type.
+
+## Browser tests
 
 ```sh
 npx playwright install chromium
 npm run test:e2e
 ```
 
-The configuration starts a fresh `samples/Workbench` process on
-`http://127.0.0.1:5042` and retains traces and screenshots on failure. The
-full-application suite covers the synthetic default report, live querying, search,
-paging, report-attribute changes, CSV download, aggregate chart rendering, saved-report
-save/reload across a page refresh, the administration lifecycle, and non-administrator
-authorization. Saved-report test data uses random names and is removed even when an
-assertion fails.
+Playwright starts a new Workbench process on `http://127.0.0.1:5042`, so stop a running Workbench first. Saved reports go to `test-results/ui/workbench-saved.db`, which keeps the tests away from `samples/Workbench/App_Data`. A failed test keeps its trace and screenshot under `test-results/ui`.
 
-## Live-dialect verification
+The tests cover loading and querying, search, paging, CSV download, charts, saved reports across a page reload, the administration page, and what a non-administrator may do. They create saved reports with random names and delete them even when a test fails. The [tests' README](../tests/ui/e2e/README.md) describes the files.
 
-`InteractiveReport.Live.Tests` runs the engine corpus against **real SQL Server, Oracle,
-and PostgreSQL**. Each test skips (never fails) unless the matching environment variable
-holds a connection string:
+## Live-database tests
 
-| Variable | Target | Example |
-|---|---|---|
-| `IR_TEST_SQLSERVER` | SQL Server 2019+ | `Server=vm-host;Database=irtest;User Id=irtest;Password=***;TrustServerCertificate=True` |
-| `IR_TEST_ORACLE` | Oracle 19c+/XE 21c | `User Id=irtest;Password=***;Data Source=vm-host:1521/XEPDB1` |
-| `IR_TEST_POSTGRES` | PostgreSQL 14+ | `Host=vm-host;Port=5432;Database=irtest;Username=irtest;Password=***` |
+`tests/InteractiveReport.Live.Tests` runs the engine against real SQL Server, Oracle and PostgreSQL servers. These tests run on a developer's machine and never on GitHub. Run them before a release that changes SQL generation, execution or the stores.
 
-Run just the battery:
+A test runs only when its variable holds a connection string. Otherwise it skips.
 
-```bash
+| Variable | Database |
+|---|---|
+| `IR_TEST_SQLSERVER` | SQL Server |
+| `IR_TEST_ORACLE` | Oracle |
+| `IR_TEST_POSTGRES` | PostgreSQL |
+
+```powershell
+$env:IR_TEST_SQLSERVER = "Server=<host>;Database=irtest;User Id=irtest;Password=<password>;TrustServerCertificate=True"
+$env:IR_TEST_ORACLE    = "User Id=irtest;Password=<password>;Data Source=<host>:1521/XEPDB1"
+$env:IR_TEST_POSTGRES  = "Host=<host>;Port=5432;Database=irtest;Username=irtest;Password=<password>"
 dotnet test tests/InteractiveReport.Live.Tests
 ```
 
-**What it does:** on first use per run it **creates a table named `IR_TEST_ORDERS`** in
-each target database when it is missing or has the wrong shape, reseeds its canonical 10
-rows with plain DML (that table is the one object the battery keeps between runs, so
-Oracle's read-only snapshots never cross a DDL boundary), then runs
-expression filters and highlights/search/explicit null-or-empty conditions/aggregates/breaks/computed columns (including CASE,
-date-part extraction over native and ISO-text dates, and the date vocabulary —
-NOW/TO_DATE/DATE_TRUNC/TO_STRING, whole-day arithmetic, and BETWEEN), request-scoped
-UTC `NOW()` parity, definition `TimeZone` session pinning for developer SQL and native
-database conversions, context-param
-binding/groupBy/pivot/export against it.
+`run-live-tests.ps1` in the repository root sets the three variables for the maintainer's test machine, checks that each database port answers, and runs the project. `-Filter` passes a `dotnet test --filter` expression.
 
-Text comparisons and sorts use the target database's configured collation. The live
-battery checks deterministic cases, but exact cross-dialect text ordering is portable
-only when each test database uses a binary/ordinal collation.
+> [!WARNING]
+> Point the variables at scratch databases. The tests create, fill and drop tables, and the test account needs rights that a report account should never have.
 
-The server-level persistence scenario also runs against every configured live dialect.
-For each database it starts the ASP.NET host over `SELECT * FROM IR_TEST_ORDERS`, obtains
-the application's synthetic `defaultState`, queries it, saves the returned document with
-its refreshed table-schema caches under a random title, restarts, and loads it. The first pass proves that the default store is a
-separate local SQLite file and does not create a persistence table in the report
-database. The second pass configures a random saved-report table in the report database
-and repeats the restart/load check. Random live tables are removed after the test.
+### What the tests do
 
-Finally, the complete saved-report create/list/update/delete contract runs against SQL
-Server, Oracle, and PostgreSQL in a dedicated `IR_SAVED_REPORTS_TEST` table, and the
-administrator-grant contract runs the same way in `IR_ADMINISTRATORS_TEST`; every store
-test drops its scratch table when it finishes.
+- Create the table `IR_TEST_ORDERS` when it is missing or has another shape, and fill it with the same ten rows before each run. The table stays between runs.
+- Run filters, search, highlights, aggregates, control breaks, computed columns, date functions, group by, pivot, context parameters and downloads against it. The expected numbers are the same on every database.
+- Run the saved-report scenario through the ASP.NET Core host for each database: save a document, restart, load it.
+- Run the saved-report store tests in `IR_SAVED_REPORTS_TEST` and the administrator store tests in `IR_ADMINISTRATORS_TEST`, and drop both tables afterwards.
+- Run the engine tests and both store tests again in Oracle 11g mode against the same Oracle server. A guard fails any statement that uses syntax Oracle 11g lacks or an identifier longer than 30 bytes.
 
-Oracle 11g compatibility mode cannot be proven against a real 11g server, so the battery
-forces that dialect against the modern Oracle server instead. The whole engine corpus and
-both store contracts run in 11g mode (ROWNUM windows, sequence-and-trigger identities)
-while a guard on the engine's SQL log fails any statement that leaves 11g's vocabulary
-(OFFSET/FETCH, identity columns, 12c functions) or exceeds its 30-byte identifier limit.
-Point the environment variables at scratch databases, not anything you care about.
+Sorting and comparing text follow each database's collation. Text order matches across databases only when each test database uses a binary collation.
 
-Expected numbers are identical on every dialect by design, including the explicit
-`NOTES IS NULL OR NOTES = ''` condition (4): SQLite/SQL Server/PostgreSQL count three
-NULLs plus one empty string, while Oracle stores the empty string as a fourth NULL.
+On PostgreSQL the tests create `IR_TEST_ORDERS` without quotes, so the names fold to lower case. That is intended: it tests the engine's case-insensitive column matching.
 
-Two dialect-specific boolean tests pin opposite emissions of the same expression:
-`CASE WHEN LARGE_FLAG THEN …` lowers to `= 1` on SQL Server (bit is a value, not a
-condition) and emits the column bare on PostgreSQL (boolean IS a condition; `= 1`
-would be a type error).
+### SQL Server setup
 
-PostgreSQL note: the battery creates `IR_TEST_ORDERS` unquoted, so Postgres folds the
-names to lowercase. That is deliberate — it proves the engine's case-insensitive
-schema matching and response dictionaries absorb identifier folding with no
-special-casing.
+1. Install SQL Server with mixed-mode authentication, enable TCP/IP, and open port 1433 in the firewall.
+2. Create the database and login, as `sa`:
 
-### SQL Server VM setup (once)
+   ```sql
+   CREATE DATABASE irtest;
+   CREATE LOGIN irtest WITH PASSWORD = '<password>';
+   USE irtest;
+   CREATE USER irtest FOR LOGIN irtest;
+   ALTER ROLE db_owner ADD MEMBER irtest;
+   USE master;
+   ALTER DATABASE irtest SET ALLOW_SNAPSHOT_ISOLATION ON;
+   ```
 
-1. Install SQL Server (Developer edition is free) with mixed-mode auth, or enable it
-   after install. Enable TCP/IP in Configuration Manager; default port 1433; allow it
-   through the VM firewall.
-2. Create the scratch database and login (run in `sqlcmd` or SSMS as sa):
+3. Check that snapshot isolation is on. The state must be `ON`, not `IN_TRANSITION_TO_ON`:
 
-```sql
-CREATE DATABASE irtest;
-CREATE LOGIN irtest WITH PASSWORD = 'YourStrongPassword1!';
-USE irtest;
-CREATE USER irtest FOR LOGIN irtest;
-ALTER ROLE db_owner ADD MEMBER irtest;   -- test user seeds tables; prod guidance differs
-USE master;
-ALTER DATABASE irtest SET ALLOW_SNAPSHOT_ISOLATION ON;
-```
+   ```sql
+   SELECT snapshot_isolation_state_desc FROM sys.databases WHERE name = N'irtest';
+   ```
 
-The last statement enables the live snapshot-concurrency case. The test skips that one
-case, with the same command in its reason, when the database retains SQL Server's default
-`OFF` setting. `READ_COMMITTED_SNAPSHOT` is not required because the report engine
-explicitly opens a `SNAPSHOT` transaction. Enabling the option can wait for existing
-update transactions to finish; verify completion with:
+The snapshot test skips, and names this setting, when the database has it off. `TrustServerCertificate=True` in the connection string accepts the server's self-signed certificate, which is acceptable for a test machine only.
 
-```sql
-SELECT snapshot_isolation_state_desc
-FROM sys.databases
-WHERE name = N'irtest';  -- must be ON, not IN_TRANSITION_TO_ON
-```
+### Oracle setup
 
-3. `TrustServerCertificate=True` in the connection string avoids TLS trust errors with
-   the default self-signed certificate — fine for a test VM.
+1. Install Oracle Database XE. Its default pluggable database service is `XEPDB1`, on port 1521.
+2. Create the test user, as `system`:
 
-### Oracle VM setup (once)
+   ```sql
+   CREATE USER irtest IDENTIFIED BY "<password>";
+   GRANT CREATE SESSION, CREATE TABLE, CREATE SEQUENCE, CREATE TRIGGER TO irtest;
+   ALTER USER irtest QUOTA UNLIMITED ON USERS;
+   ```
 
-1. Install Oracle Database XE 21c (free). The default pluggable database service is
-   `XEPDB1`; the listener is on 1521 — allow it through the VM firewall.
-2. Create the test user (run in `sqlplus system/...@//localhost:1521/XEPDB1`):
+`CREATE SEQUENCE` backs the identity column of the saved-report table. Without it, creating the table fails with `ORA-01031` and every Oracle saved-report test fails. `CREATE TRIGGER` is needed by the Oracle 11g store tests, which skip and name the grant when it is missing.
 
-```sql
-CREATE USER irtest IDENTIFIED BY "YourStrongPassword1!";
-GRANT CREATE SESSION, CREATE TABLE, CREATE SEQUENCE, CREATE TRIGGER TO irtest;
-ALTER USER irtest QUOTA UNLIMITED ON USERS;
-```
+When the snapshot tests skip with a message that the instance rejects a read-only snapshot of the seed table, the server's clock or time zone changed while the instance was running. Oracle then answers `ORA-01466`. The tests recreate the seed table once. If that does not help, restart the Oracle instance and listener.
 
-   `CREATE SEQUENCE` backs the identity column of the saved-report table; without it the
-   store's auto-create fails with ORA-01031 and every Oracle saved-report test fails.
-   `CREATE TRIGGER` is needed only by the Oracle 11g-mode saved-report contract, which
-   persists identities through a sequence and a trigger; without it those cases skip and
-   name the missing grant in their reason.
+### PostgreSQL setup
 
-3. The battery connects as `irtest` and works in that user's own schema.
-4. If the Oracle snapshot cases skip saying the instance rejects a read-only snapshot of
-   the seed table, the VM's clock or time zone changed under a running instance. Oracle
-   then rejects read-only snapshots with ORA-01466, first for every recently changed object
-   and, once its clock recovers, still for objects created while it was skewed. The
-   fixture recreates the seed table when it can no longer be snapshot-read; if even the
-   fresh table is rejected, restart the Oracle instance and listener.
+1. Install PostgreSQL. Set `listen_addresses` in `postgresql.conf` to cover the network the tests come from, add a `host all all <test-network>/24 scram-sha-256` rule to `pg_hba.conf`, and open port 5432 in the firewall.
+2. Create the role and database, as `postgres`:
 
-### PostgreSQL VM setup (once)
-
-1. Install PostgreSQL 14+ ; ensure `listen_addresses` covers the host-only interface
-   (`postgresql.conf`), add a `pg_hba.conf` rule for the host network
-   (`host all all 192.168.56.0/24 scram-sha-256`), and allow TCP 5432 through the VM
-   firewall.
-2. Create the scratch database and login (run in `psql` as postgres):
-
-```sql
-CREATE ROLE irtest LOGIN PASSWORD 'YourStrongPassword1!';
-CREATE DATABASE irtest OWNER irtest;
-```
-
-3. The battery connects as `irtest` and works in that database's public schema.
-
-### Note on the read-only-principal guidance
-
-The [database architecture](ARCHITECTURE.md#database-architecture) recommends pointing
-*report* connections at a read-only principal. The **test** user deliberately violates that; it needs DDL to seed
-`IR_TEST_ORDERS`. Don't reuse it as a production report principal.
-
-## PowerShell one-liners for the VM session
-
-```powershell
-$env:IR_TEST_SQLSERVER = "Server=vm-host;Database=irtest;User Id=irtest;Password=***;TrustServerCertificate=True"
-$env:IR_TEST_ORACLE    = "User Id=irtest;Password=***;Data Source=vm-host:1521/XEPDB1"
-$env:IR_TEST_POSTGRES  = "Host=vm-host;Port=5432;Database=irtest;Username=irtest;Password=***"
-dotnet test tests/InteractiveReport.Live.Tests -v normal
-```
-
-Every live entry flips from Skipped to Passed per variable that is set. Alternatively,
-run `run-live-tests.ps1` at the repo root; it sets all three for the dev VM, probes the
-ports first, and includes the PostgreSQL saved-report corpus.
+   ```sql
+   CREATE ROLE irtest LOGIN PASSWORD '<password>';
+   CREATE DATABASE irtest OWNER irtest;
+   ```

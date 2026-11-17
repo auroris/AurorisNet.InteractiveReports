@@ -1,44 +1,22 @@
-# Interactive Reports architecture
+# Architecture
 
-Interactive Reports is a server-side relational query engine with optional HTTP and
-browser adapters. An application supplies a trusted report definition. A user supplies
-a report document that describes how to transform and present that report. The engine
-validates the document, compiles it into parameterized SQL for the configured database,
-executes a bounded set of queries, and returns data with the effective document and its
-presentation metadata.
+How Interactive Reports is put together: the packages, the path of a request, how a report document becomes SQL, and what the browser does. Read it before changing the engine or writing a new transport.
 
-This document describes the production architecture and the responsibilities of its
-major components. It intentionally does not serve as a configuration reference, route
-catalog, user manual, or development plan. Those subjects live in:
-
-- [Getting started](GETTING-STARTED.md) for the first application integration.
-- [Saved reports](SAVED-REPORTS.md) for persistence and configured documents.
-- [Integration API](API.md) for registration, extension points, REST routes, and public
-  .NET and browser APIs.
-- [Authorization](AUTHORIZATION.md) for the complete action and resource model.
-- [Embedding the report](EMBEDDING.md) for the custom element and its host contract.
-- [GraphQL adapter](GRAPHQL.md) for the optional GraphQL transport.
-- [User Guide](USER-GUIDE.md) for report operations and expression syntax.
-- [Developing](DEVELOPING.md) and [Testing](TESTING.md) for repository workflows.
+An application supplies a report definition, which holds a trusted `SELECT`. A user supplies a report document, which describes how to filter, shape and present that query. The engine validates the document, compiles it into parameterized SQL for the report's database, runs it, and returns rows with the accepted document.
 
 ## System context
-
-The normal deployment consists of an ASP.NET Core host, one or more report databases,
-and, when saved reports are enabled, a relational persistence store. The persistence
-store contains report documents and authorization metadata. It does not contain cached
-report rows.
 
 ```text
  Browser or API client
           |
           v
-  +----------------------------- ASP.NET Core host -----------------------------+
-  |                                                                           |
+  +----------------------------- ASP.NET Core host ----------------------------+
+  |                                                                            |
   |  JSON adapter       GraphQL adapter       File-download adapter            |
   |       \                  |                       /                         |
-  |        +---------- IInteractiveReportServer -----------+                  |
+  |        +---------- IInteractiveReportServer -----------+                   |
   |                            |                                               |
-  |             definitions, authorization, persistence                       |
+  |             definitions, authorization, saved reports                      |
   |                            |                                               |
   |                       ReportExecutor                                       |
   |                            |                                               |
@@ -50,92 +28,23 @@ report rows.
              report database     saved-report store
 ```
 
-The adapters translate transport concerns into the same typed server operations. They
-do not implement separate query or authorization rules. A host can also call
-`IInteractiveReportServer` directly and omit HTTP entirely.
+The saved-report store holds report documents and administrator grants. It holds no report rows.
 
-## Architectural invariants
+## Design rules
 
-The implementation is organized around several invariants.
+**The server owns what executes.** The definition holds the base `SELECT`, the connection, the limits and the access settings. It is loaded on the server by name. SQL text and connection details are never read from a report document and never sent to a client. The engine treats the `SELECT` as an opaque relation: it wraps the statement and never parses or rewrites it.
 
-### The server owns executable input
+**Report documents are data.** A document names columns and declares operations. The engine checks every name against the schema, parses expressions with its own closed grammar, binds them to typed columns, and writes the SQL itself. User values become command parameters, and column names are resolved to schema entries before the SQL backend quotes them.
 
-The report definition contains the base `SELECT`, connection, trusted parameters,
-limits, and authorization policy. It is loaded on the server by name. SQL text and
-connection information are never accepted from a report document or returned to a
-client.
+**Every transport calls one boundary.** `IInteractiveReportServer` owns definition lookup, authorization, saved reports, queries and administration. The JSON, GraphQL and file-download packages translate their transport into its calls, so visibility, ownership, validation and failures are the same everywhere.
 
-The engine treats the configured `SELECT` as an opaque source relation. It may wrap the
-statement, but it does not parse or rewrite the statement itself. The definition is
-therefore trusted application code.
+**Relational work runs in the database.** Filters, search, computed columns, grouping, pivots, sorting, aggregates and highlight conditions are pushed into the report database. The server shapes the returned rows and keeps no copy of them. Results are therefore live, and report load falls on the configured database.
 
-### Report documents are data
+**One relation feeds every result.** The page, the row count, the aggregates, the control-break totals, the pivot totals and the highlight markers come from one validated relation plan. They may run as separate statements, and they share the same predicates and columns.
 
-A report document names columns and declares operations such as filters, computed
-columns, grouping, sorting, and formatting. It cannot contain SQL fragments. The engine
-validates names against a discovered or derived schema, parses expressions with its own
-closed grammar, binds them to typed columns, and emits the SQL itself.
+## Packages
 
-User values become command parameters. Column references are resolved to canonical
-schema entries before the SQL backend quotes them. No client-supplied identifier or
-literal is copied directly into executable SQL.
-
-### Every transport crosses one application boundary
-
-`IInteractiveReportServer` is the transport-neutral application boundary. It owns
-configuration discovery, document loading, queries, exports, saved-report operations,
-and authorization administration. JSON, GraphQL, file download, and in-process callers
-all receive the same visibility, ownership, validation, and failure semantics.
-
-### Relational work stays in the database
-
-Filters, searches, computed columns, groups, pivots, sorts, aggregates, and highlight
-predicates are pushed into the report database. The server shapes returned rows and
-metadata, but does not reproduce the relational engine in memory.
-
-This makes report results live views of the source database. Interactive Reports does
-not extract report data into a local analytical database or maintain a row cache.
-
-### All branches derive from one completed relation
-
-The page, count, footer aggregates, control-break totals, pivot totals, and highlight
-markers are built from the same validated relation plan. Their SQL may be issued as
-separate statements, but their predicates and computed schema cannot drift through
-independent composition paths.
-
-## Package and dependency structure
-
-The distributable projects target .NET 8. Dependencies point from optional adapters
-toward the server and core; the core has no ASP.NET Core dependency.
-
-NuGet IDs differ from the project and assembly names. Most applications install
-`AurorisNet.InteractiveReports`, the JSON/browser package, which brings in the
-ASP.NET Core server and core engine transitively:
-
-| NuGet package | Project |
-|---|---|
-| `AurorisNet.InteractiveReports` | `InteractiveReport.Client.Json` |
-| `AurorisNet.InteractiveReports.AspNetCore` | `InteractiveReport.AspNetCore` |
-| `AurorisNet.InteractiveReports.Core` | `InteractiveReport.Core` |
-| `AurorisNet.InteractiveReports.Client.FileDownload` | `InteractiveReport.Client.FileDownload` |
-| `AurorisNet.InteractiveReports.Client.GraphQL` | `InteractiveReport.Client.GraphQL` |
-
-C# namespaces and assembly names remain `InteractiveReport.*`. All five packages
-are released together at the same version.
-
-| Project or directory | Architectural responsibility |
-|---|---|
-| `InteractiveReport.Core` | Report and state models, structural validation, canonical planning, expression binding, SQL lowering, schema discovery, execution, and persistence contracts and implementations. |
-| `InteractiveReport.AspNetCore` | Dependency injection, configuration-backed definitions, connection resolution, startup validation, trusted request context, authorization, configured-document synchronization, and `IInteractiveReportServer`. |
-| `InteractiveReport.Client.Json` | REST and administration endpoints, coded HTTP errors, viewer pages, and embedded browser assets. |
-| `InteractiveReport.Client.GraphQL` | Optional query-only GraphQL.NET adapter over saved documents and the central server boundary. |
-| `InteractiveReport.Client.FileDownload` | Optional authorized CSV endpoint and CSV presentation. |
-| `src/client` | Source for the report and administration custom elements and chart integration. Its bundles are embedded in `InteractiveReport.Client.Json`. |
-| `src/browser-server` | A SQLite WASM implementation used by the standalone browser demo. It is not part of the production .NET request path or the authority for server semantics. |
-| `samples/Workbench` | Development host that composes all production packages against a seeded SQLite database. |
-| `tests` | Core, ASP.NET Core, live-dialect, browser-unit, browser-server, and Playwright coverage. |
-
-The dependency direction is:
+The five libraries target .NET 8. Dependencies point from the client packages to the server and from the server to Core, which has no ASP.NET Core dependency.
 
 ```text
 InteractiveReport.Core
@@ -149,39 +58,39 @@ InteractiveReport.AspNetCore
         +-- InteractiveReport.Client.FileDownload
 ```
 
-The three client packages are siblings. For example, the file-download package does
-not call a JSON endpoint, and the GraphQL package does not reimplement the REST layer.
-Each calls the server boundary directly.
+| Project or directory | NuGet package | Responsibility |
+|---|---|---|
+| `src/InteractiveReport.Core` | `AurorisNet.InteractiveReports.Core` | Report and document models, validation, planning, expression binding, SQL generation, schema discovery, execution, and the saved-report and administrator stores. |
+| `src/InteractiveReport.AspNetCore` | `AurorisNet.InteractiveReports.AspNetCore` | Registration, configured definitions, connections, startup validation, authorization, document-file synchronization and `IInteractiveReportServer`. |
+| `src/InteractiveReport.Client.Json` | `AurorisNet.InteractiveReports` | REST routes, error responses, packaged pages and the embedded browser bundle. |
+| `src/InteractiveReport.Client.GraphQL` | `AurorisNet.InteractiveReports.Client.GraphQL` | The query-only GraphQL endpoint. |
+| `src/InteractiveReport.Client.FileDownload` | `AurorisNet.InteractiveReports.Client.FileDownload` | The download route and the CSV and HTML renderers. |
+| `src/client` | | Source of the report and administration elements. `npm run build:client` bundles it into `Client.Json`. |
+| `src/browser-server` | | A JavaScript implementation of the server over SQLite WebAssembly, used only by the live demo. |
+| `src/demo` | | The live demo's page and sample data. |
+| `samples/Workbench` | | Development host with every package over a seeded SQLite database. |
 
-## Runtime domain model
+The three client packages are siblings. Each calls `IInteractiveReportServer` directly; none calls another's endpoint.
 
-Three inputs define a request:
+## Request model
 
-1. A `ReportDefinition` identifies the trusted SQL source and server policy.
-2. A `ReportState` describes the user's relational and presentation choices.
-3. An `InteractiveReportRequestContext` carries the principal, scoped services, and
-   trace identity supplied by the host or transport.
+A request has three inputs:
 
-The result contains the active table's rows and metadata plus a detached, effective
-report document. The browser adopts this returned document, including refreshed schema
-metadata, instead of assuming that its submitted copy was authoritative.
+1. A `ReportDefinition`: the trusted SQL and the server's policy for it.
+2. A `ReportState`: the report document.
+3. An `InteractiveReportRequestContext`: the caller's `ClaimsPrincipal`, the request's services and a trace id.
 
-### Report definitions
+The result holds the active table's rows and metadata, and a detached copy of the accepted document. The browser adopts that copy.
 
-`IReportDefinitionStore` resolves a definition by its stable application name. The
-default `ConfigurationReportDefinitionStore` reads monitored ASP.NET Core options and
-returns a detached, validated snapshot for each lookup. It also resolves the configured
-connection and derives the SQL dialect from that connection before execution.
+### Definitions
 
-Definitions can contain default report state. Request fields overlay that default at
-the top level, after which the engine works only on a deep copy. A request cannot mutate
-the configured default or observe an options object while it is being reloaded.
+`IReportDefinitionStore` resolves a definition by name. The default `ConfigurationReportDefinitionStore` reads the options monitor and returns a validated copy on each lookup, with the connection resolved and the SQL dialect taken from it. Request code cannot change configuration or see a half-reloaded definition.
 
-### Report documents and named relations
+A definition may hold a default report document. A request's top-level values (`search`, `page`, `activeTable`, `tables`) each replace the default's value, and the engine works on a deep copy.
 
-A report document contains a case-insensitive map of named tables and selects one as
-`activeTable`. Each table reads either from the reserved `definition` source or from
-another named table:
+### Documents and tables
+
+A report document holds a case-insensitive map of named tables and names one as `activeTable`. Each table reads from the reserved source `definition` or from another table:
 
 ```text
 definition -> orders -> regional-summary -> chart
@@ -189,390 +98,157 @@ definition -> orders -> regional-summary -> chart
                  +-> customer-pivot
 ```
 
-This is a directed relation graph, constrained to parent chains. Recursive compilation
-rejects missing parents, cycles, excessive depth, and documents over the configured
-structural ceilings.
+Compilation rejects a missing parent, a cycle, a chain deeper than 64 tables, and a document over the structural limits.
 
-Each table has two distinct outputs:
+A table has two outputs:
 
-- Its **export** is the completed relation, public schema, and inheritable metadata that
-  a child table may consume.
-- Its **local result** contains selection, ordering, breaks, footer aggregates,
-  highlights, and other instructions used only when that table is the request target.
+- Its **export**: the relation, the public schema and the labels and formats that a child table reads.
+- Its **local result**: column selection, sort order, breaks, aggregates and highlights, used only when the table is the active one.
 
-This distinction prevents a parent's page size, visible columns, sort order, or visual
-decoration from silently changing a descendant's data semantics. A child begins from
-the parent's exported relation, not from the rows the parent happened to render.
+A child starts from its parent's export. The parent's page size, visible columns and sort order do not change the child's data.
 
-### Canonical operation order
+### Operation order
 
-The order of entries in a table's `composables` array is serialization, not executable
-semantics. `CanonicalTableNormalizer` converts the mutable document into a deterministic
-specification. The effective phase order is:
+The order of entries in a table's `composables` list has no meaning. `CanonicalTableNormalizer` turns the list into a fixed specification that the engine applies in this order:
 
 ```text
 parent export
-    -> optional shape (Group, Pivot, or Chart)
-    -> computed columns in dependency order
+    -> shape (group, pivot or chart), at most one per table
+    -> computed columns, in dependency order
     -> filters
     -> labels and formats
-    -> active-request search
-    -> target-local selection, ordering, breaks, aggregates, and highlights
-    -> paging and result materialization
+    -> search of the active request
+    -> selection, sort, breaks, aggregates and highlights of the active table
+    -> paging
 ```
 
-Only one relational shape is owned by a table. Additional views are represented as
-additional named tables over a shared parent. Computed columns can depend on other
-computed columns in the same table; the normalizer topologically orders them and
-rejects dependency cycles.
+Computed columns may use other computed columns of the same table. The normalizer orders them and rejects a cycle.
 
-Per-table `schema` values in a report document are response caches for editors and
-renderers. They are never trusted for binding, authorization, or SQL generation. The
-server derives live schemas while compiling and refreshes the caches in the returned
-document.
+Each table's `schema` list in a document is a cache for editors and renderers. The engine derives the schema again on every request, never binds against the cached list, and writes a fresh list into the returned document.
 
-## Server request pipeline
-
-A query passes through the following stages.
+## Server pipeline
 
 ```text
 adapter
   -> IInteractiveReportServer
-  -> definition authorization envelope
-  -> executable definition snapshot
-  -> action, resource, ownership, and feature authorization
-  -> trusted context parameter resolution
+  -> report access check
+  -> definition copy
+  -> action, ownership and feature checks
+  -> row restriction and context parameters
   -> ReportExecutor
-       -> structural validation and default resolution
-       -> base-schema discovery or cache lookup
-       -> recursive table compilation
+       -> structural validation and defaults
+       -> base schema: discovery or cache
+       -> table compilation
        -> expression parsing and typed binding
-       -> provider-neutral bound relation plan
-       -> SqlKata lowering and terminal query construction
-       -> database read scope and sequential command execution
-       -> public row and metadata shaping
-  -> transport-specific success or coded failure
+       -> bound relation plan
+       -> SqlKata lowering and result queries
+       -> execution in one read scope
+       -> row and metadata shaping
+  -> success or coded failure
 ```
 
-### Definition and authorization resolution
+### Access checks
 
-Where the definition store supports `IReportDefinitionAuthorizationStore`, the server
-first loads a lightweight envelope containing only the canonical report name and its
-authorization settings. This allows a denied request to fail before connection strings
-or executable report details are hydrated.
+When the definition store implements `IReportDefinitionAuthorizationStore`, the server first loads only the report name and its `authorization` block, so a denied request fails before connection strings and SQL are read.
 
-After definition authorization, the server checks the requested action and resource.
-Saved-report ownership, publication rules, administrator requirements, feature gates,
-and host-provided authorizers are applied at this layer. SQL with an executable
-`{{RowRestriction}}` slot then invokes the application's row-restriction callbacks.
-Only after that decision does the server resolve trusted context parameters from
-claims or a host replacement and bind a detached definition. SQL without the marker
-never invokes a row callback. Parameter values remain separate from SQL throughout.
+The server then decides the action and resource: saved-report ownership, the administrator check, the feature check and the application's rules. For SQL that contains `{{RowRestriction}}` it calls the row-restriction callbacks, resolves the context parameters, and binds both into a copy of the definition. [Authorization](AUTHORIZATION.md) gives the complete rules.
 
-See [Authorization](AUTHORIZATION.md) for the complete gate ordering and failure rules.
+### Validation
 
-### Structural validation and resolution
-
-The engine validates the entire submitted document for null members, duplicate or
-case-colliding identities, unknown operation kinds, graph bounds, and collection limits.
-It then overlays the request on the definition's default state and creates a detached
-effective document.
-
-Structural validation is deliberately earlier than schema-dependent binding. This
-keeps malformed object graphs from reaching recursive compilation and allows errors to
-identify exact document paths.
+`StateStructureValidator` checks the whole document first: null members, table names that differ only by case, unknown composable kinds, and size limits. Errors name the exact document path. Schema-dependent binding runs only on a document that passed.
 
 ### Schema discovery
 
-The base schema is discovered by wrapping the trusted definition SQL and opening a
-schema-only reader over a relation constrained to return no rows. Discovered column
-names and provider types become the authoritative logical schema for the request.
+`SchemaDiscovery` wraps the definition's SQL in a query that returns no rows and reads the column names and types from the reader. `SchemaCache` shares one discovery among concurrent requests for the same report, connection, dialect, SQL and context parameters. A failed discovery is removed so the next request tries again. A configuration reload clears the cache.
 
-`SchemaCache` shares one discovery task among concurrent requests for the same report
-name, connection, dialect, SQL, and context-parameter signature. Failed discoveries are
-evicted so a later request can retry. Configuration reload clears the cache.
+The schema of a computed column, a group or a chart follows from the plan. A pivot's columns depend on data, so compiling a pivot runs one bounded query for the distinct column values.
 
-Schemas created by computed columns and static shapes are derived from the bound plan.
-Pivot output is data-dependent, so pivot compilation performs a bounded distinct-key
-query before it can finish the output contract.
+### Planning and binding
 
-### Canonical planning and binding
+`ComposableTableCompiler` compiles the active table and its ancestors, and any table whose `schema` list needs a refresh. An ancestor shared by several tables is compiled once per request.
 
-`ComposableTableCompiler` recursively compiles the active table and any table whose
-document schema cache needs refresh. Shared ancestors are memoized within the request.
-The compiler keeps immutable exported plans separate from the target-specific request
-overlay.
+Binding turns names and expressions into typed relation nodes that are independent of the database: the configured SQL source, references to parent exports, shape, compute, filter and metadata relations, and the request's search. Each node carries its output columns with identity, type, lineage, label, format and source path.
 
-Binding converts names and expression syntax into typed, provider-neutral relation
-nodes. The main node categories are:
+Expressions pass through a lexer, a parser, a typed binder and a dialect-aware emitter. The set of functions and operators is closed. A computed column must produce a value, and a filter or highlight must produce a condition. `NOW()` is one UTC instant per request.
 
-- the opaque configured SQL source;
-- references to completed parent exports;
-- shape, compute, filter, and metadata relations;
-- the active request's search relation.
+### SQL generation
 
-Every node carries an ordered output contract with logical column identities, types,
-lineage, labels, formats, and diagnostic source paths. Later stages operate on this
-contract rather than returning to the untrusted document.
+`SqlKataRelationLowerer` turns the relation tree into SqlKata queries and maps each logical column to a physical alias. SqlKata supplies identifier quoting, parameters and paging syntax for each database.
 
-The expression subsystem uses a lexer, parser, typed binder, and dialect-aware emitter.
-Its function and operator set is closed. Computed expressions must produce values;
-filter and highlight expressions must produce predicates. Time-sensitive expressions
-use one UTC instant captured for the request so every derived statement agrees.
+`CanonicalLocalResultBinder` binds the active table's own instructions. `TerminalExecutionBundleBuilder` then derives the result queries from the one lowered relation: the page or download rows, the row count, the aggregates, the control-break totals and the pivot totals. Highlight conditions run as extra columns of the row query; result shaping turns them into row and cell markers and removes them from the rows.
 
-### SQL lowering and terminal queries
+### Execution
 
-`SqlKataRelationLowerer` is the only backend for bound relation nodes. It turns the
-immutable relation tree into SqlKata queries while maintaining a private mapping from
-logical column identity to physical aliases. SqlKata then supplies provider-specific
-identifier quoting, parameters, and paging syntax.
+`ReportConnectionManager` opens one connection for the engine's part of a request, sets the session time zone where the definition names one, and starts the read scope: a snapshot transaction for `consistency: "snapshot"`, and no transaction otherwise.
 
-`CanonicalLocalResultBinder` binds instructions owned by the active table.
-`TerminalExecutionBundleBuilder` derives the required datasets from the same lowered
-relation. Depending on the requested view, the bundle can include:
+`ReportQueryReader` runs one command for each result set on that connection, in turn. On Oracle with snapshot consistency it runs them as one batch that returns a `REF CURSOR` for each.
 
-- page or export rows;
-- total row count;
-- footer aggregates;
-- control-break totals;
-- pivot totals;
-- private highlight marker projections.
+Oracle rejects a snapshot read with `ORA-01466` when a queried table's definition changed after the snapshot began. The manager then ends the scope and runs the whole read once more before it reports the error.
 
-The engine projects highlight predicates as private database columns. Result shaping
-turns those markers into row and cell metadata and removes them from public rows.
+The executor enforces the row, page, pivot, chart and document limits before or during these stages.
 
-### Execution and result shaping
+## Database
 
-`ReportConnectionManager` opens one connection for the engine portion of a request,
-applies trusted session settings, and creates the configured read-consistency scope.
-`ReportQueryReader` executes the derived statements sequentially on that connection and
-maps their stable ordinal layouts into provider-neutral values.
-
-Sequential execution limits connection pressure and works consistently with SQLite.
-When a definition requests snapshot consistency, the manager maps that requirement to
-the provider's appropriate transaction behavior. When it requests no cross-statement
-consistency, each statement observes the database according to its normal isolation
-rules. Oracle rejects a snapshot read with ORA-01466 when a queried table's definition
-changed after the snapshot time, which also happens for recently changed tables when the
-server clock or time zone changes under a running instance; the manager ends the scope
-and re-executes the whole read once before reporting the error, whose diagnosis names
-the remedy.
-
-The executor finally removes private columns, applies public column identities and
-metadata, assembles totals and decorations, and attaches the effective document. Row,
-page, pivot, chart, and structural limits are enforced before or during these stages so
-user state cannot create unbounded work.
-
-## Database architecture
-
-### Live pushdown
-
-The engine composes over the configured query in the source database:
+The engine composes over the configured query:
 
 ```sql
 SELECT ...
 FROM (
-    /* trusted report definition */
+    /* the definition's SELECT */
 ) ir_base
-WHERE /* engine-emitted predicates with bound values */
-ORDER BY /* schema-bound identifiers */
+WHERE /* predicates written by the engine, with bound values */
+ORDER BY /* columns resolved against the schema */
 ```
 
-Nested derived tables establish semantic boundaries between phases, such as making a
-computed column available to a later filter. Count and aggregate queries clone or
-re-lower the same completed relation before adding their terminal projection.
+Nested derived tables separate the phases, so a computed column is available to a later filter. Count and aggregate queries build on the same relation.
 
-This design preserves current source data and the database's native type, collation,
-index, and optimizer behavior. It also means interactive workloads run against the
-configured database. Production deployments should prefer a reporting database or
-read replica with a least-privileged, read-only principal, especially when the host is
-internet-facing.
+The dialects are SQL Server, PostgreSQL, Oracle and SQLite. The dialect belongs to the connection: the server takes it from the provider token or from the connection type, so a definition cannot claim a dialect its connection does not have. For an Oracle connection the server reads the database version and switches to the Oracle 11g dialect when needed, which pages with `ROWNUM` and uses a sequence and trigger for saved-report ids.
 
-### Dialect boundary
+SqlKata renders general SQL. The engine owns the differences SqlKata does not cover: expression functions, date arithmetic, boolean conditions, null ordering, median, snapshot setup and Oracle 11g paging.
 
-The supported dialect families are SQL Server, PostgreSQL, Oracle, and SQLite. Oracle
-11g compatibility is selected after server-version detection when required.
+The packages reference no ADO.NET driver. The host application's driver is found by type name at run time.
 
-The SQL dialect is a property of the resolved connection. It is detected from a
-code-registered connection type or from the configured provider token; wrapper
-connections can declare it explicitly. This prevents a report definition from claiming
-a dialect inconsistent with the connection it will execute against.
+## Saved reports
 
-SqlKata owns general SQL rendering. Interactive Reports owns semantic differences that
-cannot be delegated safely, including expression functions, date operations, boolean
-predicates, null ordering, median support, snapshot setup, and older Oracle paging.
-These differences are isolated behind the lowering, expression-emission, connection,
-and persistence components rather than spread through transports or UI code.
+A saved report holds a report document with its report name, owner, visibility, default flag, modification time and origin. It holds no results.
 
-All ADO.NET providers are loaded from the host application's
-dependency graph, keeping optional database drivers out of applications that do not
-use them. The Workbench sample references Microsoft.Data.Sqlite directly.
+Loading runs the stored document through the same validation, planning and execution as a submitted one. Only loading falls back: from a failed stored document to the stored default, then to the default built from the definition. Listing and loading never write.
 
-## Authorization architecture
+`ISavedReportStore` is the storage boundary, and `SqlSavedReportStore` implements it for the four dialects. `IAdministratorStore` holds the administrator grants in a second table on the same connection. The report database and the saved-report store may be one database or two.
 
-Interactive Reports consumes the `ClaimsPrincipal` established by the host. It does not
-authenticate users or issue credentials.
+A configured document keeps its state in a file. `ConfiguredReportDocumentSynchronizer.EnsureSynced` gives each file a row in the store, so configured and user-created saved reports are listed and selected in one way. [Saved reports](SAVED-REPORTS.md) describes the behavior.
 
-`IReportAuthorizationService` evaluates server policy without depending on `HttpContext`
-or an HTTP result type. Its inputs are the principal, an `InteractiveReportAction`, and
-an `InteractiveReportAuthorizationResource`. The checks compose:
+## Browser
 
-```text
-host endpoint policy
-    + report-definition policy
-    + saved-report ownership and publication rules
-    + configured application authorizers
-    + optional {{RowRestriction}} decision
-    + trusted context parameters in the base SQL
-```
+The bundle is a client of the JSON routes. `<interactive-report>` owns the working document, the dialogs, rendering, the chart integration, the language and the events. It renders in a shadow root and needs no framework on the page.
 
-The host endpoint policy is enforced by ASP.NET Core around mapped routes. The remaining
-checks occur inside the central server boundary, so they also protect GraphQL and
-in-process calls. A hidden browser control is never considered an authorization
-mechanism.
+The element runs at most one query at a time and collects edits made while that query runs. On success it adopts the document the server returned. On failure it keeps the last accepted document. Server validation is therefore the point at which a user's edit takes effect.
 
-Context parameters are resolved on the server, normally from claims. They bind values
-referenced by the trusted base query. `UseRowRestrictions` additionally supplies a
-predicate at the configured expression slot, before any subsequent report composition.
-Client state cannot set or replace either parameter class. Row decisions are reused
-within one server operation and never cached across callers. Core compilation rejects
-unresolved slots. On marked reports, advisory table schemas are refreshed under the
-current restriction and omitted from persisted states and document exports; the shared
-base-schema cache holds only column metadata, never pivot keys or row-access decisions.
+`<interactive-report-admin>` uses the same routes for the administration page. Neither element is a security boundary: the server decides every operation.
 
-Internal exceptions are logged with a trace identifier and converted to sanitized,
-coded failures. Adapters map those failures into their own wire format without exposing
-connection strings, configured SQL, or provider diagnostics.
+## Lifetime and caching
 
-## Saved reports and configured documents
+The engine and store services are singletons that hold no request state or hold thread-safe caches. State that belongs to one request lives in the copied definition, the copied document and the request context.
 
-A saved report persists a report document, its report family, visibility, ownership,
-revision metadata, and origin. It persists a query description, not query results.
+The base-schema cache is the only cache that concerns report data. It holds column metadata and no rows.
 
-Loading retrieves a document and hydrates its active table through the same validation,
-planning, and execution routine used for client-submitted documents. The loading wrapper
-alone owns fallback: a failed stored document is followed by the stored default and then a
-synthetic default, with no duplicate attempt. Client-submitted hydration returns its first
-result or error. Both paths return the effective document with its corresponding data.
+A hosted service validates configuration when the host starts: every definition, its connection and dialect, the driver of each `dataSource`, the document-file declarations, the administrator settings and the table names. It opens no database connection. Saved-report storage is resolved when an operation first needs it.
 
-The client owns the working document and may construct it independently of storage.
-Hydration never consults saved identity or changes persistence. Listing and loading also
-perform no saved-report writes; only explicit save and administration operations do so.
-
-`ISavedReportStore` defines the persistence boundary. `SqlSavedReportStore` implements
-it over the configured relational store and handles the supported database dialects.
-The report data source and saved-report store can be the same database, but they have
-separate responsibilities and can use different connections.
-
-Configured report-document files are source-controlled document bodies. The
-`ConfiguredReportDocumentSynchronizer` reconciles their identities and metadata with
-the saved-report store when the host explicitly calls `EnsureSynced`, such as during
-startup. Configured and user-created documents then share listing and selection behavior.
-Configured documents remain read-only through application APIs. A synthetic default has
-no persistent identity unless an explicit operation saves a document.
-
-Authorization metadata uses a separate store abstraction and participates in the same
-connection and dialect infrastructure. Administration pages call server operations;
-they do not access either persistence table directly.
-
-## Transport and browser architecture
-
-### JSON adapter
-
-`InteractiveReport.Client.Json` maps the primary REST surface, saved-report and
-authorization administration operations, schema and list-of-values requests, viewer
-pages, and embedded static assets. Endpoints are thin: they deserialize input, construct
-an `InteractiveReportRequestContext`, call `IInteractiveReportServer`, and map its
-result to HTTP.
-
-The package returns stable error codes with sanitized descriptions and trace identifiers.
-Exact route and payload contracts are documented in [Integration API](API.md).
-
-### GraphQL adapter
-
-`InteractiveReport.Client.GraphQL` provides query-only discovery and execution of saved
-documents. Paging, search, and sorting overrides are applied to a detached document,
-which is then submitted through `IInteractiveReportServer`. The adapter has no mutation
-model and no independent report catalogue or authorization path.
-
-### File-download adapter
-
-`InteractiveReport.Client.FileDownload` authorizes an export, asks the server for the
-unpaged active result, and renders CSV from the returned public data and presentation
-metadata. It does not bypass row limits; a response can explicitly report truncation.
-
-### Browser custom elements
-
-The browser bundle is a presentation client over the JSON protocol. The
-`<interactive-report>` element owns working report state, dialogs, rendering, chart
-integration, localization, and browser events. It renders inside a shadow root and does
-not need a host-side front-end framework.
-
-The element maintains at most one active query per widget and coalesces edits made while
-that query is running. On success it adopts the server-returned effective document. On
-failure it retains the last accepted state. This makes server validation the commit
-boundary for user edits while keeping UI interaction responsive.
-
-The `<interactive-report-admin>` element uses the same transport module and server
-operations for persistence and authorization administration. Neither element is a
-security boundary.
-
-## Lifecycle, concurrency, and caching
-
-Most registered engine and store components are stateless singletons or own
-thread-safe caches. Request-specific mutable state stays in detached definition and
-document copies, request contexts, and request-scoped compilers.
-
-The base-schema cache is the only report-data-related process cache. It stores metadata,
-not rows. Its key contains the schema-affecting definition fields, and configuration
-reload invalidates it. Request-local compilation memoizes named-table ancestors only for
-the life of that request.
-
-The startup hosted service validates report definitions, resolves their connections and
-dialects, verifies configured provider activation without opening a database connection,
-checks document-file declarations, and checks persistence table-name invariants before
-the host begins serving normal work. Saved-report storage itself remains optional and is
-resolved when a persistence or administration operation needs it. Later configuration
-reloads are validated when their snapshots are resolved, and failures are reported
-through the standard sanitized error path.
-
-Cancellation tokens flow from adapters through authorization, discovery, compilation,
-database commands, and result reading. A canceled request does not convert into an
-internal server failure. Command timeouts and document limits provide separate bounds
-when a client remains connected.
+Cancellation tokens pass from the adapter through authorization, discovery, compilation, commands and reading. A cancelled request does not become a `500`.
 
 ## Extension points
 
-The primary host extension points align with architectural boundaries rather than SQL
-composition internals:
-
 | Extension point | Purpose |
 |---|---|
-| `IReportDefinitionStore` | Supply report definitions from configuration, a database, or another trusted source. |
-| `IReportDefinitionAuthorizationStore` | Resolve a lightweight authorization envelope before hydrating executable definitions. |
-| `IReportConnectionFactory` / `AddConnection` | Create unopened ADO.NET connections controlled by the host. |
-| `IContextParameterResolver` | Resolve trusted values used by configured SQL. |
-| `UseRowRestrictions(...)` | Resolve caller-specific predicates for SQL containing `{{RowRestriction}}`. |
-| `InteractiveReportBuilder.UseAuthorization(...)` / `.UseAspNetCoreAuthorization()` | Add application-specific operation authorization. |
-| `ISavedReportStore` | Replace report-document persistence. |
-| `IInteractiveReportUserProvider` / `UseUserDirectory(...)` | Supply searchable account choices to administration UI without granting authority. |
-| `InteractiveReportBuilder.UseAdministrators(...)` / `AdministratorPolicy` | Decide who administers saved reports; the configured list and the administration center's list are the fallback. |
-| `IInteractiveReportServer` | Invoke the application boundary directly or build another transport adapter. |
+| `IReportDefinitionStore`, `IReportDefinitionAuthorizationStore` | Supply definitions from another trusted source. |
+| `AddConnection` | Create connections in application code. |
+| `IContextParameterResolver` | Resolve the trusted parameters of the base SQL. |
+| `UseRowRestrictions` | Supply a predicate for each caller. |
+| `UseAuthorization`, `UseAspNetCoreAuthorization` | Add application rules for operations. |
+| `UseAdministrators`, `AdministratorPolicy` | Decide who administers. |
+| `UseUserDirectory`, `IInteractiveReportUserProvider` | Supply account choices to the administration page. |
+| `ISavedReportStore` | Replace saved-report storage. |
+| `IInteractiveReportDownloadWriter` | Replace the download formats. |
+| `IInteractiveReportServer` | Call the server from application code, or build another transport. |
 
-The bound-plan and SQL-lowering layers are internal. Custom callers extend the product
-at the definition, connection, context, authorization, persistence, or transport
-boundaries instead of injecting SQL into the composition pipeline.
-
-## Key architectural decisions
-
-| Decision | Consequence |
-|---|---|
-| Keep configured SQL server-side and represent user changes as data. | The server can validate a closed input language and retain control of executable SQL. |
-| Push relational work into the source database. | Results stay live and use native database capabilities; deployments must manage interactive load on that database. |
-| Use a typed bound relation plan between state and SQL. | Validation, operation order, lineage, and dialect lowering remain separate concerns. |
-| Give named tables exported and local-result boundaries. | Relations remain composable without leaking a parent's presentation or paging state. |
-| Treat document schema as an advisory cache. | Clients can edit dynamic tables without stale metadata becoming an execution authority. |
-| Derive all terminal datasets from one completed relation. | Page data, counts, totals, and decorations share the same semantics. |
-| Put authorization and report operations behind `IInteractiveReportServer`. | Optional transports cannot drift in visibility, ownership, or execution policy. |
-| Package transports separately. | Hosts pay only for the dependencies and public surfaces they use. |
-| Cache schema but not report rows. | Repeated requests avoid discovery overhead while preserving live-data semantics and simpler invalidation. |
+The relation plan and the SQL lowering are internal. [Integration API](API.md) documents each extension point.

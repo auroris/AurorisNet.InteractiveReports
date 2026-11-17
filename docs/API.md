@@ -1,28 +1,20 @@
 # Integration API
 
-This guide is the application integrator's reference for Interactive Reports. It
-starts with the ASP.NET Core surface because the server owns report definitions,
-authorization, trusted context parameters, database access, and validation. The
-browser element owns presentation and user-authored report state.
-
-For report-state semantics, see the [User Guide](USER-GUIDE.md); for persistence and
-configured documents, see [Saved reports](SAVED-REPORTS.md). The full trust and
-component model is in [Architecture](ARCHITECTURE.md), and the optional saved-report
-transport is covered by the [GraphQL adapter](GRAPHQL.md).
+The server-side reference: packages, registration, report definitions, extension points, REST routes and errors. The browser element is described in [Embedding the report](EMBEDDING.md), and the access rules in [Authorization](AUTHORIZATION.md).
 
 ## Packages and namespaces
 
-| Package | Primary namespace | Use it for |
+| Package | Namespace | Contents |
 |---|---|---|
-| `InteractiveReport.AspNetCore` | `InteractiveReport.AspNetCore` | Server registration, transport-neutral request/authorization boundary, configuration, execution, and persistence integration. |
-| `InteractiveReport.Client.Json` | `InteractiveReport.Client.Json` | REST, saved-report, administration, viewer, and packaged-browser routes. |
-| `InteractiveReport.Client.FileDownload` | `InteractiveReport.Client.FileDownload` | Authorized file-download routes and CSV rendering. |
-| `InteractiveReport.Core` | `InteractiveReport.Core.*` | Report definitions and state, execution, definition stores, and persistence contracts. This is referenced transitively by the server package. |
-| `InteractiveReport.Client.GraphQL` | `InteractiveReport.Client.GraphQL` | Optional query-only discovery and execution of saved reports through GraphQL.NET. |
+| `AurorisNet.InteractiveReports` | `InteractiveReport.Client.Json` | REST routes, the packaged viewer and administration pages, and the browser bundle. |
+| `AurorisNet.InteractiveReports.AspNetCore` | `InteractiveReport.AspNetCore` | Registration, configuration, authorization and `IInteractiveReportServer`. |
+| `AurorisNet.InteractiveReports.Core` | `InteractiveReport.Core.*` | Report models, the expression language, SQL generation, execution and the storage contracts. |
+| `AurorisNet.InteractiveReports.Client.FileDownload` | `InteractiveReport.Client.FileDownload` | The CSV and HTML download route. |
+| `AurorisNet.InteractiveReports.Client.GraphQL` | `InteractiveReport.Client.GraphQL` | The query-only GraphQL endpoint for saved reports. |
+
+Each of the three client packages references the ASP.NET Core package, which references Core. All five are released together with one version number.
 
 ## Register and map the server
-
-The smallest application uses configuration-backed definitions:
 
 ```csharp
 using InteractiveReport.AspNetCore;
@@ -30,155 +22,114 @@ using InteractiveReport.Client.Json;
 
 var builder = WebApplication.CreateBuilder(args);
 
-builder.Services.AddInteractiveReports(builder.Configuration);
+var reports = builder.Services.AddInteractiveReports(builder.Configuration);
 builder.Services.AddInteractiveReportJson();
 
 var app = builder.Build();
-app.MapInteractiveReportJson("/api/reports");
-app.Run();
-```
-
-The default configuration section is `InteractiveReport`. Supply a different
-`sectionName` argument when the application needs one:
-
-```csharp
-builder.Services.AddInteractiveReports(builder.Configuration, "Reporting");
-```
-
-```json
-{
-  "ConnectionStrings": {
-    "MainDb": "Data Source=reports.db"
-  },
-  "InteractiveReport": {
-    "Reports": {
-      "orders": {
-        "title": "Orders",
-        "dataSource": "MainDb",
-        "provider": "sqlite",
-        "sql": "SELECT ORDER_ID, CUSTOMER, STATUS, AMOUNT FROM ORDERS",
-        "authorization": { "allowAnonymous": true }
-      }
-    }
-  }
-}
-```
-
-`MapInteractiveReportJson` returns a `RouteGroupBuilder`, so normal endpoint conventions
-can be applied to the complete surface:
-
-```csharp
 app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapInteractiveReportJson("/api/reports")
     .RequireAuthorization("ReportingUsers")
     .RequireRateLimiting("reports");
+app.Run();
 ```
 
-The host's route-group authorization is independent of report-definition
-authorization. For example, a group-level requirement still applies to a definition
-that sets `allowAnonymous`.
+`AddInteractiveReports` reads the `InteractiveReport` section, or the section named by its third argument, and returns an `InteractiveReportBuilder`. `MapInteractiveReportJson` returns a `RouteGroupBuilder`, so endpoint conventions apply to every route under the prefix. The packaged pages and browser assets stay anonymous under such a convention, because they are marked `AllowAnonymous`.
 
-### Register a connection factory
+A convention on the route group and a report's own `authorization` setting are separate checks. A group that requires authorization also requires it for a report that sets `allowAnonymous`.
 
-Use `AddConnection` when the application creates connections in code. The callback
-must create a new, unopened connection for each call. The package detects the SQL
-dialect from the concrete connection type.
+### Builder methods
 
-```csharp
-using InteractiveReport.AspNetCore;
-using Microsoft.Data.SqlClient;
-
-builder.Services
-    .AddInteractiveReports(builder.Configuration)
-    .AddConnection("MainDb", sp =>
-    {
-        var configuration = sp.GetRequiredService<IConfiguration>();
-        var connectionString = configuration.GetConnectionString("MainDb")
-            ?? throw new InvalidOperationException("MainDb is not configured.");
-        return new SqlConnection(connectionString);
-    });
-```
-
-Wrapper and profiler connection types may not reveal their provider. Declare the
-dialect in that case:
-
-```csharp
-using InteractiveReport.Core.Model;
-
-reports.AddConnection(
-    "ProfiledDb",
-    sp => new ProfiledDbConnection(CreateInnerConnection(sp)),
-    ReportDialect.SqlServer);
-```
-
-The corresponding report definition uses `"connection": "MainDb"`. A definition
-sets either `connection` or `dataSource`, never both.
-
-## Report-definition configuration
-
-Definitions are keyed by an internal family name under `InteractiveReport:Reports`.
-Processing, family discovery, document loading, and viewer endpoints use that key.
-Database-generated numeric ids identify individual documents within or after that family
-context; mutation routes use the id directly.
-
-| Property | Purpose |
+| Method | What it does |
 |---|---|
-| `title` | Optional display title. |
-| `dataSource`, `provider` | A `ConnectionStrings` name or literal connection string and its provider token. |
-| `connection` | A name registered through `AddConnection`; an alternative to `dataSource`. |
-| `sql` | The developer-owned base `SELECT`. It never crosses the client boundary. |
-| `contextParams` | Trusted server-resolved values used by the base SQL. |
-| `authorization` | Public access (`allowAnonymous`) and an optional ASP.NET Core `policy`. Everything else needs an authenticated caller; narrower access is the application's decision. |
-| `features` | Initial client-control suggestions. `download` and saved-report creation also have server checks. |
-| `defaultState` | The developer-owned initial `ReportState`. |
-| `documentFiles` | Source-controlled saved-report envelopes, relative to the content root unless absolute. |
-| `maxRows`, `defaultPageSize`, `maxPageSize`, `maxPivotColumns`, `maxChartPoints` | Execution limits. |
-| `commandTimeoutSeconds`, `consistency`, `timeZone` | Database execution policy. |
-| `columnLabels`, `columns`, `editLink`, `createLink` | Definition-owned presentation and behavior hints; the two links carry a `mode` of `navigate` or `event`. |
+| `AddConnection(name, factory)` | Registers a factory that returns a new, unopened `DbConnection`. The SQL dialect is detected from the connection type. Registering a name again replaces it. |
+| `AddConnection(name, factory, dialect)` | The same, with a declared `ReportDialect`, for wrapper or profiler connection types. |
+| `UseLogger(logger)` | Sends the package's log events to one `ILogger`. See [Logging](#logging). |
+| `UseContextParameterResolver<T>()` | Replaces the claim-based resolver of [context parameters](#context-parameters). `T` is a singleton. |
+| `UseRowRestrictions(callback)` | Adds a callback that supplies a SQL predicate for reports whose `sql` contains `{{RowRestriction}}`. See [Row restrictions](AUTHORIZATION.md#row-restrictions). |
+| `UseAuthorization(callback)` | Adds an application rule for every protected operation. See [Authorization](AUTHORIZATION.md#direct-callback). |
+| `UseAspNetCoreAuthorization()` | Sends every protected operation through ASP.NET Core resource-based authorization. See [Authorization](AUTHORIZATION.md#aspnet-core-resource-handler). |
+| `UseAdministrators(callback)` | Makes the application decide who administers. See [Administrators](AUTHORIZATION.md#administrators). |
+| `UseUserDirectory(callback)` | Supplies account choices to the administration page. See [Administration user directory](#administration-user-directory). |
+| `UseUserProvider<T>()` | The class-based form of the same directory. `T` is scoped. |
 
-Configuration is validated at startup. Reports require authentication unless their
-authorization block explicitly sets `allowAnonymous`. `features` is a client hint,
-not an authorization boundary: embedding JavaScript may override client controls.
-The server still independently enforces authorization, report-state validation,
-trusted context, and the `download` and saved-report-creation feature checks.
+### Services
 
-Each `documentFiles` entry is a `{ "title", "default", "state" }` JSON envelope;
-`title` is the file-backed report's required configured name. The state remains on disk;
-the saved-report store supplies its runtime identity and catalogue metadata. At most one
-file per family may set `default: true`. Reconciliation, failure handling, deployment,
-and import/export are described in [Saved reports](SAVED-REPORTS.md#source-controlled-documents).
-
-## Server API index
-
-| API | Purpose |
+| Service | Use |
 |---|---|
-| `IServiceCollection.AddInteractiveReports(...)` | Registers definitions, execution, persistence, and the transport-neutral server/authorization boundary. Returns `InteractiveReportBuilder`. |
-| `IServiceCollection.AddInteractiveReportJson()` | Registers the JSON/browser client adapter. |
-| `IServiceCollection.AddInteractiveReportFileDownload()` | Registers file writers; currently CSV. |
-| `InteractiveReportBuilder.AddConnection(...)` | Registers an unopened ADO.NET connection factory, with inferred or explicit dialect. |
-| `InteractiveReportBuilder.UseLogger(...)` | Sends package diagnostics to a host-owned `ILogger`. The package is silent when no logger is supplied. |
-| `InteractiveReportBuilder.UseContextParameterResolver<T>()` | Replaces claim-based trusted-context resolution with a singleton application resolver. |
-| `InteractiveReportBuilder.UseUserProvider<T>()` | Adds a scoped application user directory for administration account choices; override `SearchUsers` to push the search text and result limit into the application's user store. |
-| `InteractiveReportBuilder.UseUserDirectory(...)` | Adds a user-directory callback that answers a search with .NET identities, projected to the same canonical identity values sign-in produces. |
-| `InteractiveReportBuilder.UseAdministrators(...)` | Makes the application the authority on who administers. Without it, `InteractiveReport:AdministratorPolicy` answers, and without that the configured list plus the administration center's list. |
-| `InteractiveReportBuilder.UseAuthorization(...)` | Adds a direct application authorization callback. |
-| `InteractiveReportBuilder.UseAspNetCoreAuthorization()` | Adds an adapter to ASP.NET Core resource-based authorization. |
-| `IEndpointRouteBuilder.MapInteractiveReportJson(...)` | Maps REST, saved-report, administration, packaged asset, and optional viewer routes. |
-| `IEndpointRouteBuilder.MapInteractiveReportFileDownload(...)` | Maps `POST {prefix}/{name}/{format}` file requests. |
-| `IReportAuthorizationService` | Central transport-neutral definition, resource, administrator, feature, and application-authorization boundary. |
-| `IInteractiveReportServer` | Loads saved documents and executes authorized client-submitted report documents without HTTP response types. |
-| `IReportDefinitionStore` | Resolves executable report definitions. `IReportDefinitionAuthorizationStore` is its optional lightweight authorization companion. |
-| `ReportExecutor` | Validates and executes a resolved definition and `ReportState`; engine calls perform no transport authorization themselves. |
-| `ISavedReportStore` | Replaceable persistence contract. It stores data but does not make authorization decisions. |
-| `IrJson.Options` | Shared JSON protocol options for host-owned endpoints. |
-| `ReportFeatures` | Canonical client-control feature names and server feature checks. |
+| `IInteractiveReportServer` | Runs every report operation with authorization, without HTTP types. The three client packages call it, and so can the application. |
+| `IReportAuthorizationService` | The authorization decisions the server makes: report access, actions, administrator status and context parameters. |
+| `IReportDefinitionStore` | Resolves a report definition by name. Replaceable. |
+| `ISavedReportStore` | Stores saved reports. It makes no access decisions. Replaceable. |
+| `ReportExecutor` | Validates and executes a report document against a resolved definition. It performs no authorization. |
+| `ReportDefinitionCompiler` | Validates a definition built in code and resolves its connection and dialect. |
+| `ConfiguredReportDocumentSynchronizer` | Registers the `documentFiles` of each report in the saved-report store. See [Saved reports](SAVED-REPORTS.md#synchronization). |
+| `IrJson.Options` | The `JsonSerializerOptions` of the wire format, for endpoints the application writes. |
 
-## Trusted context parameters
+## Report definitions
 
-The default resolver reads configured claims from the current principal. These
-values are never accepted from report-state JSON.
+A report definition is one entry under `InteractiveReport:Reports`. Its key is the report name used in every route. The [settings table](../README.md#report-definitions) lists each property with its default. This section explains the properties that need more than a line.
+
+The server validates every definition when the host starts and again when configuration reloads. A validation failure at startup stops the host. After a reload it produces a coded `500` response for requests to that report.
+
+### Data sources
+
+A definition sets `dataSource` or `connection`, never both.
+
+- `dataSource` without `=` names an entry under `ConnectionStrings`. A missing entry is an error.
+- `dataSource` with `=` is a literal connection string.
+- `connection` names a factory registered with `AddConnection`. Names that start with `__ir:` are reserved.
+
+For `dataSource`, the server takes the provider from the definition's `provider` setting, or from `ConnectionStrings:{name}_ProviderName`:
+
+| `provider` | `_ProviderName` values | Driver package |
+|---|---|---|
+| `sqlite` | `Microsoft.Data.Sqlite` | `Microsoft.Data.Sqlite` |
+| `sqlServer` | `Microsoft.Data.SqlClient`, `System.Data.SqlClient` | `Microsoft.Data.SqlClient` |
+| `postgres` | `Npgsql` | `Npgsql` |
+| `oracle` | `Oracle.ManagedDataAccess.Client` | `Oracle.ManagedDataAccess.Core` |
+
+The SQL dialect always follows the connection. At startup the server creates each `dataSource` connection once, unopened, to confirm that the driver is installed.
+
+### Base SQL
+
+`sql` is the base `SELECT`. The engine wraps it as a derived table named `ir_base` and never parses or rewrites it, so:
+
+- It must not end with a top-level `ORDER BY`. Sorting belongs to the report document.
+- Parameter names of the form `p0`, `p1`, and so on are reserved for the engine.
+- The marker `{{RowRestriction}}` asks the application's row-restriction callback for a predicate. Any other `{{...}}` expression in executable SQL is an error.
+
+### Features
+
+`features` lists the feature tokens a report offers. Without the setting, a report offers all of them. Tokens are matched without regard to case, and an unknown or repeated token fails validation.
+
+| Token | What the UI shows |
+|---|---|
+| `search` | The toolbar search box. |
+| `columns` | The Columns dialog and **Hide Column**. |
+| `rename` | **Rename** in the column heading menu. |
+| `columnSettings` | The Column Settings dialog. |
+| `filter` | Filters. |
+| `sort` | Sorting. |
+| `pagination` | The Pagination menu and the pager buttons. |
+| `controlBreak` | Control breaks. |
+| `highlight` | Highlights. |
+| `aggregate` | Aggregates. |
+| `compute` | Computed columns. |
+| `groupBy` | The Group By view. |
+| `pivot` | The Pivot view. |
+| `chart` | The Chart view. |
+| `savedReports` | Save, Save As, Delete and the saved-report selector. |
+| `download` | The Download menu. |
+
+**Only two tokens are enforced by the server.** Without `download`, the download route answers `403` with `IR-1100`. Without `savedReports`, creating a saved report answers the same; existing saved reports can still be updated and deleted. The other tokens only hide controls: the query route accepts any valid report document, and page JavaScript can [override the controls](EMBEDDING.md#client-controls). Use context parameters and row restrictions to limit data.
+
+The configuration binder reads an empty JSON array as an absent setting, so `"features": []` offers every feature. To lock a report down, list the one or two features it keeps.
+
+### Context parameters
+
+A context parameter is a parameter of the base SQL that the server resolves for each request. A report document cannot set it.
 
 ```json
 {
@@ -189,28 +140,25 @@ values are never accepted from report-state JSON.
 }
 ```
 
-Register an `IContextParameterResolver` when context comes from another trusted
-source, such as a tenant service:
+Write the placeholder in the provider's own syntax: `@name` on SQL Server and SQLite, `:name` on Oracle. The default resolver binds the value of the named claim, or `NULL` when the caller has no such claim.
+
+Register a resolver when the value comes from another trusted source:
 
 ```csharp
 using System.Security.Claims;
 using InteractiveReport.Core.Execution;
 using InteractiveReport.Core.Model;
 
-public sealed class TenantContextResolver(ITenantAccessor tenants)
-    : IContextParameterResolver
+public sealed class TenantContextResolver(ITenantAccessor tenants) : IContextParameterResolver
 {
     public ValueTask<object?> Resolve(
         string name,
         ContextParamSpec spec,
         ClaimsPrincipal? user,
         CancellationToken ct = default)
-    {
-        ct.ThrowIfCancellationRequested();
-        return name.Equals("tenantId", StringComparison.OrdinalIgnoreCase)
+        => name.Equals("tenantId", StringComparison.OrdinalIgnoreCase)
             ? ValueTask.FromResult<object?>(tenants.RequiredTenantId)
             : throw new InvalidOperationException($"Unknown context parameter '{name}'.");
-    }
 }
 
 builder.Services
@@ -218,127 +166,20 @@ builder.Services
     .UseContextParameterResolver<TenantContextResolver>();
 ```
 
-The resolver is registered as a singleton. Its dependencies must therefore be safe
-to consume from a singleton, or it must use a scope-safe accessor.
+The resolver is a singleton, so its dependencies must be safe to hold for the life of the application.
 
-## Row-restriction callback
+### Row and time limits
 
-Place `{{RowRestriction}}` in configured SQL and register
-`InteractiveReportBuilder.UseRowRestrictions(InteractiveReportRowRestrictionCallback)`
-to provide a caller-specific SQL predicate. The delegate receives an
-`InteractiveReportRowRestrictionRequest` (`User`, nullable canonical `UserId`,
-`ReportName`, and `RequestServices`) plus a cancellation token, and returns
-`ValueTask<RowRestriction>`.
+`maxRows` caps unpaged queries and downloads. A page size of `0` means all rows, up to `maxRows`. `maxPageSize` must not exceed a positive `maxRows`, and `defaultPageSize` must lie between 1 and `maxPageSize`.
 
-```csharp
-reports.UseRowRestrictions((request, ct) =>
-{
-    ct.ThrowIfCancellationRequested();
-    return ValueTask.FromResult(request.User.IsInRole("ControlledGoods")
-        ? RowRestriction.Unrestricted
-        : RowRestriction.Where("p.CG = ?", 0));
-});
-```
+`consistency: "snapshot"` runs every statement of one request in one snapshot: a `SNAPSHOT` transaction on SQL Server, a read-only transaction on Oracle, `REPEATABLE READ` on PostgreSQL and a read transaction on SQLite. The request fails when the database cannot provide the snapshot. On SQL Server that means `ALLOW_SNAPSHOT_ISOLATION` is off.
 
-For SQL such as `SELECT p.ID FROM Products p WHERE {{RowRestriction}}`, the engine
-inserts a parenthesized expression and binds `0` as a database parameter. `Where`
-accepts no `WHERE` keyword; each `?` represents one scalar value. `NotApplicable`
-contributes no decision, `Unrestricted` explicitly permits the configured dataset,
-and `Deny` stops execution. Multiple callbacks combine with `AND`.
+## Call the server from application code
 
-SQL **without** the marker never invokes this callback and needs no restriction
-registration. Marked SQL requires an explicit decision, including for anonymous
-callers; missing or failed decisions cannot fall back to the unrestricted query.
-This hook runs within the shared server used by JSON, GraphQL, and file downloads,
-after the existing authorization gates. See
-[Row restrictions](AUTHORIZATION.md#row-restrictions) for placement before grouping,
-anonymous callers, multiple callbacks, binding rules, and saved-schema behavior.
-
-## Application authorization
-
-Report-definition authorization remains active for every integration. Application
-authorization can add restrictions; it cannot bypass authentication, the administrator
-decision, or the saved-report ownership rules.
-
-### Direct callback
-
-`UseAuthorization` receives the caller, attempted action, report resource, and the
-current request service provider. Return `false` for an expected denial.
-
-```csharp
-var reports = builder.Services.AddInteractiveReports(builder.Configuration);
-
-reports.UseAuthorization(static (request, ct) =>
-{
-    ct.ThrowIfCancellationRequested();
-
-    var allowed = request.Action switch
-    {
-        InteractiveReportAction.ViewReport or
-        InteractiveReportAction.Query or
-        InteractiveReportAction.Export
-            => request.User.IsInRole("ReportingUsers"),
-
-        _ => request.User.IsInRole("ReportAdministrators")
-    };
-
-    return ValueTask.FromResult(allowed);
-});
-```
-
-Use `request.Resource.ReportName` and `request.Resource.SavedReport` for
-resource-specific decisions. Multiple callbacks, plus the ASP.NET Core adapter when
-enabled, compose with AND semantics.
-
-### ASP.NET Core resource authorization
-
-`UseAspNetCoreAuthorization` emits an
-`InteractiveReportAuthorizationRequirement` and an
-`InteractiveReportAuthorizationResource` through `IAuthorizationService`:
+`IInteractiveReportServer` gives an endpoint written by the application the same definition lookup, authorization, row restriction and context parameters as the packaged routes:
 
 ```csharp
 using InteractiveReport.AspNetCore;
-using Microsoft.AspNetCore.Authorization;
-
-builder.Services.AddSingleton<IAuthorizationHandler, ReportAuthorizationHandler>();
-
-builder.Services
-    .AddInteractiveReports(builder.Configuration)
-    .UseAspNetCoreAuthorization();
-
-public sealed class ReportAuthorizationHandler
-    : AuthorizationHandler<
-        InteractiveReportAuthorizationRequirement,
-        InteractiveReportAuthorizationResource>
-{
-    protected override Task HandleRequirementAsync(
-        AuthorizationHandlerContext context,
-        InteractiveReportAuthorizationRequirement requirement,
-        InteractiveReportAuthorizationResource resource)
-    {
-        if (context.User.IsInRole("ReportingUsers") &&
-            resource.ReportName.Equals("orders", StringComparison.OrdinalIgnoreCase))
-        {
-            context.Succeed(requirement);
-        }
-
-        return Task.CompletedTask;
-    }
-}
-```
-
-The requirement's `Action` distinguishes query, export, saved-report, publication,
-and administration operations. A handler should succeed only the actions it intends
-to grant.
-
-## Build a host-owned HTTP endpoint
-
-Use `IInteractiveReportServer` when a custom endpoint should preserve the same definition,
-authorization, saved-document, and trusted-context boundary as the packaged endpoints:
-
-```csharp
-using InteractiveReport.AspNetCore;
-using InteractiveReport.Client.Json;
 using InteractiveReport.Core.Model;
 
 app.MapPost("/internal/orders/query", async (
@@ -359,70 +200,73 @@ app.MapPost("/internal/orders/query", async (
 });
 ```
 
-Return `InteractiveReportHttpResult.Failure` unchanged for a failed server result. This
-preserves the package's status mapping, non-disclosure behavior, and coded error shape.
-Add an ASP.NET Core endpoint policy separately when the host needs one in addition to the
-report's own authentication and authorization rules.
+Each method returns an `InteractiveReportServerResult<T>` with either `Value` or `Failure`. Pass a failure to `InteractiveReportHttpResult.Failure` unchanged: it applies the status codes and the error shape described under [Errors](#errors).
 
-## Execute and export in process
+| Method | Operation |
+|---|---|
+| `ListConfigurations` | The reports the caller may view. |
+| `GetSchema` | Columns, default document, features and limits of one report. |
+| `Query`, `QueryForDownload` | Run a submitted report document. The second authorizes `Export` and requires the `download` feature. |
+| `Lov` | Distinct values of one column. |
+| `ListSavedReports`, `LoadDocument`, `LoadDefaultDocument` | List and load saved reports. |
+| `SaveDocument`, `UpdateDocument`, `DeleteDocument` | Change saved reports. |
+| `ExportDocument`, `ImportDocument` | Download and upload a saved report as a document file. |
+| `ListAdministrators`, `SetAdministrators`, `ListAuthorizationUsers` | Administration. |
+| `DescribeIdentity` | The `whoami` answer. |
 
-`ReportExecutor` is the transport-neutral query engine. Direct callers must resolve
-an executable definition and supply trusted context parameters themselves:
+## Execute in process
+
+`ReportExecutor` runs a report document without authorization. The caller resolves the definition and supplies the context parameters, and so becomes the trust boundary. Use it for background work. In a request, use `IInteractiveReportServer`.
 
 ```csharp
 using InteractiveReport.Core.Definitions;
 using InteractiveReport.Core.Execution;
+using InteractiveReport.Core.Model;
 
 var definition = await definitions.Find("orders", ct)
     ?? throw new KeyNotFoundException("Report 'orders' was not found.");
 
-var contextParams = new Dictionary<string, object?>
-{
-    ["tenantId"] = tenant.Id
-};
+var contextParams = new Dictionary<string, object?> { ["tenantId"] = tenant.Id };
 
 var result = await executor.Query(definition, state, contextParams, ct);
-```
 
-For an in-process list of values, pass the complete current document explicitly:
-
-```csharp
 var values = await executor.Lov(definition, new ReportLovRequest
 {
     Document = state,
-    Table = state.ActiveTable ?? "definition",
+    Table = state.ActiveTable,
     Column = "STATUS",
-    Search = "pen"
+    Search = "pen",
 }, contextParams, ct);
 ```
 
-`values.Items` contains no more than `ReportExecutor.MaxLovItems` (50) entries.
+`values.Items` holds at most `ReportExecutor.MaxLovItems` (50) values. The executor rejects a definition whose SQL still contains `{{RowRestriction}}`.
 
-This lower-level path does not perform application authorization or infer context from a
-principal. Prefer `IInteractiveReportServer` in an HTTP request. A background process that
-uses `ReportExecutor` directly becomes the trust and authorization boundary itself.
-
-For browser-facing files, register and map the file client:
+## File downloads
 
 ```csharp
 using InteractiveReport.Client.FileDownload;
 
 builder.Services.AddInteractiveReportFileDownload();
-// ...
+// After builder.Build():
 app.MapInteractiveReportFileDownload("/api/download");
 ```
 
-The file client accepts the JavaScript client's current document, turns paging off in a
-detached copy, runs central `Export` authorization and the `download` feature check, then
-submits the document as an ordinary query and renders the returned rows. CSV rendering
-applies effective labels and masks, emits link text and image URLs rather than browser
-HTML, retains action labels, appends requested pivot totals, and omits hidden renderer
-inputs from the file.
+`POST {prefix}/{name}/{format}` accepts a report document and returns it as `csv` or `html`. The route:
 
-## Replace a definition or saved-report store
+1. Replaces the document's paging with all rows.
+2. Authorizes the `Export` action and requires the `download` feature.
+3. Runs the document as an ordinary query, capped at `maxRows`.
+4. Sets the response header `X-IR-Truncated` to `true` when the cap cut the result.
 
-The built-in `IReportDefinitionStore` reads configuration. An application can replace
-it after calling `AddInteractiveReports`:
+CSV applies the report's labels and format masks, writes a link column as its link text and an image column as its URL, and omits hidden renderer source columns. Text that a spreadsheet would read as a formula is neutralized. The file starts with a UTF-8 byte order mark.
+
+HTML is one document with its styles included: labels, masks, control breaks and totals, with a data table in place of a chart. It is refused with `422` and `IR-1102` when the row cap cut the result or the document exceeds 4,194,304 characters. `HtmlReportPresentation.Render(title, result)` produces the same HTML for the application's own printing or document service; its optional arguments choose `A4`, `Letter` or `Legal` paper and landscape orientation.
+
+An unknown format answers `400` with `IR-1101`. The formats come from the registered `IInteractiveReportDownloadWriter`, which an application can replace with its own.
+
+## Replace the definition store or the saved-report store
+
+The built-in `IReportDefinitionStore` reads configuration. Replace it after `AddInteractiveReports` to load definitions from elsewhere:
 
 ```csharp
 using InteractiveReport.Core.Definitions;
@@ -432,50 +276,30 @@ builder.Services.Replace(
     ServiceDescriptor.Singleton<IReportDefinitionStore, DatabaseReportDefinitionStore>());
 ```
 
-A custom definition store returns detached definitions, assigns the canonical `Name`,
-and resolves `Connection` and `Dialect` before returning. It is also responsible for
-validating its definition-level settings. Implement
-`IReportDefinitionAuthorizationStore` as well when the store can return a lightweight
-name and authorization envelope before loading the executable SQL definition.
+A custom store is responsible for every report it returns:
 
-`ReportDefinitionCompiler`, registered by `AddInteractiveReports`, provides the same
-detached snapshot, validation, and registered-connection resolution as the configuration
-store. A dynamic store can return `compiler.Compile(instanceName, definition)`. Set the
-optional server-owned `ReportDefinition.SourceName` when an instance derives from another
-source. Operation authorization and row-restriction callbacks receive it as
-`SourceReportName`, falling back to `ReportName` for ordinary definitions. It is metadata
-for application rules; it does not grant access or apply a source's policy automatically.
+- Return a new `ReportDefinition` object for each call, with `Name`, `Connection` and `Dialect` set. `ReportDefinitionCompiler.Compile(name, definition)` copies and validates a definition and resolves its connection the way the built-in store does.
+- Implement `IReportDefinitionAuthorizationStore` as well when the store can return a report's name and `authorization` block cheaply. The server then checks access before it loads the full definition.
+- Set `ReportDefinition.SourceName` when several report names are variants of one source report. Authorization and row-restriction callbacks receive it as `SourceReportName`. It grants nothing by itself.
 
-Replacing the store replaces configuration-backed report lookup and its built-in
-definition behavior. Configured-document synchronization remains a separate, explicit
-host operation. A custom definition store is an application boundary responsible for
-every report it exposes.
+A replaced store no longer serves the configured reports or the built-in `__saved-reports` listing behind the administration page.
 
-`ISavedReportStore` is separately replaceable for custom persistence. Its methods are
-storage-only; ownership and authorization policy remain in
-`IReportAuthorizationService`. Implementations must honor the documented detached-snapshot
-and compare-and-swap contracts.
+`ISavedReportStore` is replaceable in the same way. Its methods only store and read: the server makes the ownership and visibility decisions. An implementation must return detached copies and honor the compare-and-swap arguments of `Update`, `Delete` and `ReplaceDefault`.
 
-## Supply administration user choices
+## Administration user directory
 
-The administration page's account pickers (owner reassignment and the administrator
-list) search `GET {prefix}/admin/users`. One lookup merges two sources: the identities
-Interactive Reports already knows (configured and database administrators, saved-report
-owners, and the caller) and an optional application user directory, which is what
-supplies display names. Nothing in the lookup grants access; it offers choices, and
-free-form identity entry remains available.
+The administration page lets an administrator pick accounts when reassigning a saved report or editing the administrator list. Each picker searches `GET {prefix}/admin/users`, which merges two sources:
 
-Register the directory as a callback. It receives the administrator, the trimmed search
-text (`null` for a browse), the result limit, and the request services, and answers with
-.NET identities. Each identity is projected through the same claim chain sign-in uses
-(`InteractiveReport:IdentityClaim`, otherwise NameIdentifier → `sub` → Name), so the value
-an administrator picks is exactly the value that account resolves to when it signs in:
+- the identities the server already knows: configured and database administrators, saved-report owners and the caller;
+- an optional directory supplied by the application, which adds display names.
+
+The lookup offers choices only. It grants no access, and a picker also accepts an identity value typed in full.
+
+Register the directory as a callback that answers a search with .NET identities:
 
 ```csharp
 using System.Security.Claims;
 using InteractiveReport.AspNetCore;
-
-var reports = builder.Services.AddInteractiveReports(builder.Configuration);
 
 reports.UseUserDirectory(async (search, ct) =>
 {
@@ -495,19 +319,14 @@ reports.UseUserDirectory(async (search, ct) =>
 });
 ```
 
-An identity's display name is its `Name`, then a `name`, `preferred_username`, UPN, or
-email claim, then the identity value itself. An identity that resolves to no value is an
-integration error and fails the lookup rather than being dropped.
+`InteractiveReportUserSearch` carries the `Administrator` principal, the trimmed `Search` text (`null` when the picker opens without text), the result `Limit` and the `RequestServices`.
 
-`IInteractiveReportUserProvider` is the class-based alternative, registered with
-`UseUserProvider<T>()` and resolved in request scope. Its one method, `SearchUsers`,
-receives the same search and answers with display names and canonical values;
-`InteractiveReportUser.FromIdentity` performs the identity projection described above
-for providers that start from `ClaimsIdentity` values.
+The server reads each identity's value the way it reads a signed-in caller's, so the value an administrator picks is the value that account has when it signs in. The display name is the identity's `Name`, then a `name`, `preferred_username`, UPN or email claim, then the identity value. An identity without a usable value fails the lookup with a `500`.
+
+`UseUserProvider<T>()` registers a class in place of the callback. Its one method returns display names and identity values directly:
 
 ```csharp
-public sealed class ReportUserProvider(IApplicationUsers users)
-    : IInteractiveReportUserProvider
+public sealed class ReportUserProvider(IApplicationUsers users) : IInteractiveReportUserProvider
 {
     public async ValueTask<IReadOnlyCollection<InteractiveReportUser>?> SearchUsers(
         InteractiveReportUserSearch search,
@@ -516,89 +335,56 @@ public sealed class ReportUserProvider(IApplicationUsers users)
             .Select(user => new InteractiveReportUser(user.DisplayName, user.SubjectId))
             .ToArray();
 }
-
-builder.Services
-    .AddInteractiveReports(builder.Configuration)
-    .UseUserProvider<ReportUserProvider>();
 ```
 
-Directory entries lead the answer in directory order; known identities follow
-alphabetically, minus any the directory already described. Returning `null` or an empty
-collection leaves the picker with the known identities. Lookup limits live under
-`InteractiveReport:UserDirectory`: `MaxResults` (default 50, at most 1000) bounds one
-answer, counting both sources, and a directory that fills it is reported as truncated so
-the UI asks for a narrower search; `CacheSeconds` (default 60) memoizes the directory's
-answer to a browse per administrator, and `0` asks the directory every time. Searched
-lookups are never memoized, and known identities are always read fresh, so a grant or
-reassignment appears in the next lookup.
+An entry with an empty display name or value, or two entries with one value, fail the lookup.
 
-## REST surface
+Directory entries come first, in the directory's order. Known identities follow in alphabetical order. `null` or an empty answer leaves the known identities. `UserDirectory:MaxResults` bounds the merged answer, and `truncated` is `true` when the directory filled the limit, so the page asks for a narrower search. `UserDirectory:CacheSeconds` reuses the directory's answer to a lookup without search text, for each administrator. Searches are never cached, and known identities are read on every lookup.
 
-With the default prefix, the principal routes are:
+## REST routes
 
-| Method and route | Contract |
+The table uses the default prefixes. Every request body must be sent as `Content-Type: application/json`; ASP.NET Core answers another content type with an empty `415`. Responses carry `Cache-Control: no-store`, except the browser assets, which use `no-cache` with an `ETag`.
+
+| Method and route | What it does |
 |---|---|
-| `GET /api/reports` | Lists appsettings report configurations the caller may view as `{ name, title }`. It does not list or reconcile report documents. |
-| `GET /api/reports/{name}` | Lists visible stored report documents without modifying the catalogue. Administrators see the complete family; other callers see public and exactly owned documents. IDs are JSON numbers. The list may be empty. |
-| `GET /api/reports/{name}/schema` | Definition schema, presentation hints, limits, features, and client capabilities for a configured definition key. |
-| `POST /api/reports/{name}/query` | Accepts the client's `ReportState`; returns `ReportResult` with rows and the accepted server-enriched `document`. |
-| `POST /api/reports/{name}/lov` | Accepts a required current `document`, its active `table`, one `column`, and optional `search`; returns at most 50 distinct values. |
-| `POST /api/download/{name}/{format}` | File-client endpoint. Accepts the current `ReportState`; supports `csv` and self-contained `html`. Both enforce export access and the `download` feature. HTML returns HTTP 422 (`IR-1102`) if row or document-size limits prevent a complete export. |
-| `POST /api/reports/{name}/saved` | Creates a private or global saved report from `SaveReportRequest` in the configured family, without an existing document ID. |
-| `GET /api/reports/{name}/{id}` | Loads and hydrates the numeric document after authorizing the named configuration and confirming family membership. Returns `{ summary, result }`, with default fallback on document failure. |
-| `GET /api/reports/{name}/default` | Loads and hydrates the family's stored default, falling back to a synthetic default. Returns `{ summary, result }`; `summary` is `null` for synthetic state. |
-| `PUT /api/reports/{id}` | Applies `UpdateSavedReportRequest`; `isDefault: true` atomically selects a new default. |
-| `DELETE /api/reports/{id}` | Deletes an editable saved report. |
-| `GET /api/reports/whoami` | Optional identity diagnostic; disabled unless `WhoamiEnabled` is true. |
-| `GET /api/reports/admin/users` | Searches account choices after the administration gate: the application directory merged with known identities, narrowed by the optional `search` query (at most 200 characters) and bounded by `UserDirectory:MaxResults`. Returns `{ items, truncated }`. |
-| `GET /api/reports/admin/administrators` | Returns `{ configured, database, managedByApplication }`: the configured and database-backed administrator identities, and whether the application decides administrators itself, which leaves both lists inert. |
-| `PUT /api/reports/admin/administrators` | Replaces the database-backed administrator grants with `{ identities }`, granting the missing ones and revoking the rest; configured administrators are unaffected. |
-| `GET /api/reports/admin/saved/{id}/document` | Downloads a saved report as a configured-document envelope. |
-| `POST /api/reports/admin/{name}/documents` | Validates and imports an envelope as a private document in the configured family, without an existing document ID. |
-| `GET /api/reports/ui/{file}` | Packaged browser assets. |
-| `GET /api/reports/{name}/view` | Optional packaged viewer page. |
-| `GET /api/reports/admin` | Optional packaged administration page. |
+| `GET /api/reports` | Lists the configured reports the caller may view, as `{ name, title }`, ordered by title. |
+| `GET /api/reports/{name}/schema` | Returns the report's columns, default document, features, limits, expression functions and link settings. |
+| `POST /api/reports/{name}/query` | Runs the posted report document and returns a result with rows and the accepted `document`. |
+| `POST /api/reports/{name}/lov` | Returns at most 50 distinct values of one column of the posted document. |
+| `GET /api/reports/{name}` | Lists the saved reports of one report that the caller may load. Administrators receive all of them. |
+| `GET /api/reports/{name}/default` | Loads the report's default document with its data, as `{ summary, result }`. `?pageSize=n` sets the first page size. |
+| `GET /api/reports/{name}/{id}` | Loads one saved report with its data, as `{ summary, result }`. |
+| `POST /api/reports/{name}/saved` | Creates a saved report from `{ title, state, isGlobal }`. Answers `201`. |
+| `PUT /api/reports/{id}` | Updates a saved report. `title`, `state`, `isGlobal`, `isDefault` and `owner` are each optional. |
+| `DELETE /api/reports/{id}` | Deletes a saved report. Answers `204`. |
+| `POST /api/download/{name}/{format}` | Returns the posted report document as a `csv` or `html` file. Mapped by the file-download package. |
+| `GET /api/reports/whoami` | Returns the caller's identity value, administrator status and claims. Answers `404` unless `WhoamiEnabled` is `true`. |
+| `GET /api/reports/admin/users` | Searches account choices with the optional `search` query (at most 200 characters). Returns `{ items, truncated }`. |
+| `GET /api/reports/admin/administrators` | Returns `{ configured, database, managedByApplication }`. |
+| `PUT /api/reports/admin/administrators` | Replaces the database administrator list with `{ identities }`. Answers `204`. |
+| `GET /api/reports/admin/saved/{id}/document` | Downloads a saved report as a `{ title, default, state }` document file. |
+| `POST /api/reports/admin/{name}/documents` | Imports a document file as a private saved report of the caller. Answers `201`. |
+| `GET /api/reports/ui/{file}` | A packaged browser asset: `ir.js`, `ir-admin.js`, `ir-chart.js`, their source maps and `help.{locale}.html`. Anonymous. |
+| `GET /api/reports/{name}/view` | The packaged viewer page. `?saved-report=id` opens a saved report. Anonymous. |
+| `GET /api/reports/admin` | The packaged administration page. Anonymous. |
 
-`ReportResult.configuredLabels` carries the definition-owned base label map separately
-from structural column metadata. Clients layer the returned document's label composables
-over that map when rendering their own representation.
+The routes under `/admin`, except the page itself, require an administrator. `MapInteractiveReportJson` attaches summaries, tags, and request and response types to the data routes for the application's OpenAPI generator.
 
-All persisted document IDs are database-generated integers. A missing document, a document
-addressed through the wrong configured family, and a document the caller may not read all
-return 404. The ordinary component starts with the appsettings name: it lists that family
-and loads `/api/reports/{name}/default`, or the explicit `saved-report` ID. The load already
-contains the initial data, so rendering requires no subsequent query. It never calls the root catalogue.
-The administration component uses the root catalogue to enumerate appsettings families,
-then loops over the same family-list route. Schema, query, LOV, and download also use the
-configured definition key. These processing endpoints authorize that definition and do
-not read the saved-report store. A submitted `ReportState` has no required ID or stored
-provenance; it may be a mutated default, another retrieved document, or a document made
-entirely by the client.
+### Saved-report summaries
 
-Stored loads and client-submitted hydration use the same validation, planning, and execution
-routine. A failed stored document is followed by the stored default, then a synthetic default;
-the same document is never retried. If the synthetic default fails, the load returns an error.
-Authorization denials and cancellation stop immediately. A client-submitted document is
-hydrated once, with no fallback. The returned `result.document` and data always describe
-the same successful candidate. Load metadata identifies that candidate when it is persisted.
-No read path inserts, repairs, or deletes saved documents. Configured catalogue synchronization
-is an explicit host or administration operation.
+A summary has `id`, `reportName`, `title`, `isGlobal`, `isDefault`, `mine`, `isReadOnly` and `modifiedUtc`. `id` is a database-generated integer, unique across all reports, and a JSON number. `isReadOnly` marks a document that comes from a `documentFiles` entry.
 
-Each report family may have one public stored default. Selecting an ordinary database report
-as default also publishes it globally and retains the previous default as a global report.
-The default cannot be unset directly. When a configured file declares `default: true`,
-configuration owns the selection and API attempts to replace it return 409.
+A saved report that does not exist, belongs to another report, or is hidden from the caller answers `404` with `IR-1002` in each case.
 
-All data and management routes enter the central boundary through
-`IInteractiveReportServer`. Packaged assets and page
-shells are intentionally anonymous; the page's API calls are still authorized.
-Every request body must be declared as `Content-Type: application/json`; any other
-declared type is refused by the framework with an empty 415 before a handler runs, on
-the JSON and file-download routes alike.
-`MapInteractiveReportJson` supplies standard endpoint summaries, tags, request and
-response types, and error metadata for the host's OpenAPI generator.
+### Loading
 
-A minimal query document looks like this:
+`GET {name}/{id}` and `GET {name}/default` run the stored document and return it with its data, so a client needs no second request. When the stored document cannot be read or fails validation or execution, the server tries the report's stored default, then a default built from the definition. Each is tried once. `summary` describes the document that succeeded and is `null` for the built default. A denial stops the load at once.
+
+Loading never writes. A document that failed stays as it was.
+
+`POST {name}/query` runs the posted document once, with no fallback. The document needs no saved-report id: a client may post a changed copy of a loaded document or one it built itself.
+
+### Report documents
 
 ```http
 POST /api/reports/orders/query HTTP/1.1
@@ -606,11 +392,11 @@ Content-Type: application/json
 
 {
   "page": { "index": 1, "size": 50 },
+  "search": "acme",
   "activeTable": "base",
   "tables": {
     "base": {
       "from": "definition",
-      "schema": null,
       "composables": [
         { "kind": "filter", "filters": [ { "expr": "STATUS = 'Open'" } ] },
         { "kind": "sort", "sorts": [ { "col": "AMOUNT", "dir": "desc" } ] },
@@ -621,47 +407,43 @@ Content-Type: application/json
 }
 ```
 
-Use the `document` in the successful response as the accepted state. The server may
-populate advisory schema caches or remove stale state into `ignored`.
+A document holds named tables and names one as `activeTable`. Each table reads `from` the reserved name `definition` or from another table, and carries a list of composables:
 
-Query JSON writes CLR `Int64`, `UInt64`, and `Decimal` values as invariant strings so a
-JavaScript client cannot silently round them through IEEE-754. Their column metadata still
-reports `type: "number"`. Ordinary 32-bit integers and floating-point values remain JSON
-numbers.
+| `kind` | Properties |
+|---|---|
+| `filter` | `filters`: `expr`, `enabled` |
+| `compute` | `computed`: `id`, `label`, `expr`, `enabled` |
+| `sort` | `sorts`: `col`, `dir` (`asc`, `desc`), `nulls` (`first`, `last`) |
+| `select` | `columns`: the visible columns, in order |
+| `labels` | `labels`: column name to heading |
+| `formats` | `formats`: column name to `mask`, `align`, `bold`, `italic`, `fg`, `bg`, `classes`, `displayAs`, `urlColumn`, `textColumn`, `command`, `keyColumn` |
+| `break` | `breaks`: column names |
+| `aggregate` | `aggregates`: `col`, `fn` |
+| `highlight` | `highlights`: `id`, `name`, `sequence`, `scope` (`row`, `cell`), `col`, `style` (`bg`, `fg`), `expr`, `enabled` |
+| `group` | `by`, `values`: `id`, `col`, `fn` |
+| `pivot` | `rows`, `cols`, `values`, `totals` |
+| `chart` | `type` (`bar`, `line`, `area`, `pie`), `label`, `value`, `fn`, `orientation`, `sort`, `labelAxisTitle`, `valueAxisTitle` |
 
-The LOV endpoint executes against the complete document currently held by the client,
-including unsaved changes. `table` must identify that document's active table, and only
-the named column is read. The optional case-insensitive search is applied before the hard
-50-item limit. The endpoint uses the same `InteractiveReportAction.Query` authorization
-as the report table; there is no second column authorization check.
+`fn` is `count`, `sum`, `avg`, `median`, `min`, `max` or `countDistinct`. A table holds at most one of `group`, `pivot` and `chart`; a second view of the same data is a second table that reads from the first. The order of composables in the list does not change the result: [Architecture](ARCHITECTURE.md#operation-order) gives the order the engine applies them in. The [JSON Schema](../schemas/report-document.schema.json) describes the whole format, and the [User guide](USER-GUIDE.md#writing-expressions) the expression language.
 
-The packaged LOV is an editable combobox shared by filter and highlight authoring.
-Its search is a case-insensitive partial match by default: `ac` finds values containing
-`ac`, without requiring wildcard syntax. Selecting a returned text item creates a
-case-insensitive exact condition. Pressing Enter or **Use Typed Value** without selecting
-an item accepts the search text as the condition value and follows the same exact rule.
-An unescaped `*` in typed text changes that condition to a case-insensitive partial
-match; `Ac*Corp` matches text beginning with `Ac` and ending with `Corp`, while `Ac\*Corp`
-matches the literal text `Ac*Corp`. SQL wildcard characters `%` and `_` are ordinary
-literal characters in this syntax. Numeric, boolean, date, and null LOV values retain
-their typed exact-match behavior.
+A document may hold at most 64 tables and 512 composables, with 20 computed columns, 50 filters and 50 highlights. Search text is at most 200 characters.
+
+Use the `document` of a successful response as the new state. The server adds a `schema` list to each table for editors, and moves settings that no longer apply, such as a sort on a removed column, into the result's `ignored` list instead of failing. A table's `schema` in a posted document is never trusted.
+
+A result holds `columns`, `availableColumns`, `rows`, `page`, `totalRows`, `aggregates`, `breakTotals`, `breakContinues`, `highlights`, `ignored`, `configuredLabels`, `elapsedMs` and `document`. `configuredLabels` is the definition's label map; a client applies the document's `labels` over it.
+
+### Numbers in JSON
+
+64-bit integers and decimals in rows are written as strings in invariant format, so a JavaScript client does not round them. Their column still reports `type: "number"`. 32-bit integers and floating-point values are JSON numbers.
+
+### List of values
 
 ```http
 POST /api/reports/orders/lov HTTP/1.1
 Content-Type: application/json
 
 {
-  "document": {
-    "activeTable": "base",
-    "tables": {
-      "base": {
-        "from": "definition",
-        "composables": [
-          { "kind": "filter", "filters": [ { "expr": "STATUS <> 'CANCELLED'" } ] }
-        ]
-      }
-    }
-  },
+  "document": { "activeTable": "base", "tables": { "base": { "from": "definition" } } },
   "table": "base",
   "column": "CUSTOMER",
   "search": "ac"
@@ -678,10 +460,68 @@ Content-Type: application/json
 }
 ```
 
-## Diagnostics and error responses
+The server compiles the complete posted document, so its filters and computed columns apply, and reads the one column of its active table. `table` must name that active table. `search` is an optional partial match that ignores case, applied before the limit of 50. The route authorizes the `Query` action.
 
-Interactive Reports uses one optional host-owned logger. Supply it during registration
-with `UseLogger`, or when mapping the JSON endpoints:
+## Errors
+
+Every failure of a data route is one JSON object:
+
+```json
+{
+  "code": "IR-1201",
+  "description": "One or more report settings are invalid.",
+  "title": "Report state failed validation",
+  "details": "tables.base.composables[0].filters[0].expr: unknown column 'OLD_NAME'"
+}
+```
+
+`code` identifies the failure and does not change between versions or languages. `title` and `description` are English text that a client may replace by code. `details` carries what is specific to the request. An unexpected failure answers `500` with a `traceId` that matches the server log, and no other detail.
+
+| Status | When |
+|---|---|
+| `400` | The request or report document is invalid. |
+| `401` | The operation needs a signed-in caller. The response carries `WWW-Authenticate: InteractiveReport`. |
+| `403` | The caller is signed in and the operation is denied or the feature is off. |
+| `404` | The report or saved report does not exist, or the caller may not know that it does. Only `code`, `title` and `description` are returned. |
+| `409` | A saved-report title is taken, or configuration owns the default. |
+| `415` | The request body is not declared as JSON. The body is empty. |
+| `422` | An HTML download would be incomplete. |
+| `500` | An unexpected failure, with `traceId`. |
+
+| Code | Meaning |
+|---|---|
+| `IR-1000` | Authentication required. |
+| `IR-1001` | Report not found, or access is hidden. |
+| `IR-1002` | Saved report not found, or access is hidden. |
+| `IR-1003` | Endpoint not available (`whoami` is off). |
+| `IR-1004` | Authorization denied. |
+| `IR-1005` | An authorization callback, handler or policy failed unexpectedly. |
+| `IR-1100` | The feature is not enabled for the report. |
+| `IR-1101` | Unsupported download format. |
+| `IR-1102` | The download exceeds the row cap or the HTML size limit. |
+| `IR-1200` | The report document is not valid JSON. |
+| `IR-1201` | The report document failed validation. `details` lists a path and message for each error. |
+| `IR-1202` | The report could not be processed. |
+| `IR-1300`, `IR-1303` | The save or update request is not valid JSON. |
+| `IR-1301` | The saved-report title must have 1 to 200 characters. |
+| `IR-1302`, `IR-1308` | The request must include report state. |
+| `IR-1304` | The owner must be a non-empty identity value of at most 400 characters. |
+| `IR-1305`, `IR-1306`, `IR-1307` | An uploaded document file is not valid JSON, has an invalid title, or has no state. |
+| `IR-1309` | A saved report with this title already exists. |
+| `IR-1310` | A configured document uses this title. |
+| `IR-1311` | Configured documents cannot be updated or deleted. |
+| `IR-1312` | The default cannot be unset. Select another default. |
+| `IR-1313` | Configuration selects the default, so the API cannot replace it. |
+| `IR-1400`, `IR-1406` | The administrator list request is not valid JSON, or has no `identities` list. |
+| `IR-1402` | An identity must have 1 to 400 characters. |
+| `IR-1405` | User search text may have at most 200 characters. |
+| `IR-1500` | The GraphQL endpoint accepts HTTP GET and POST only. |
+
+`GET {name}/default` answers an invalid `pageSize` with an ASP.NET Core validation problem, not with this shape.
+
+## Logging
+
+The package writes no log output until the application supplies a logger, during registration or when mapping the routes:
 
 ```csharp
 var reportLogger = app.Services.GetRequiredService<ILoggerFactory>()
@@ -689,185 +529,14 @@ var reportLogger = app.Services.GetRequiredService<ILoggerFactory>()
 app.MapInteractiveReportJson("/api/reports", reportLogger);
 ```
 
-Without a supplied logger, the package creates no provider or output. `Information`
-records startup validation, mapped requests, report queries and exports, and configured
-document synchronization. `Debug` adds authorization decisions, schema-cache activity,
-and submitted SQL. Request bodies and SQL parameter values are not logged. The host owns
-filtering and destinations.
-
-Every JSON failure uses `InteractiveReportError`. `code` and `description` are required;
-`title`, `details`, and `traceId` appear when applicable:
-
-```json
-{
-  "code": "IR-1201",
-  "description": "One or more report settings are invalid.",
-  "title": "Report state failed validation",
-  "details": "tables.orders.composables[0].filters[0].expr: unknown column 'OLD_NAME'"
-}
-```
-
-The `IR-nnnn` code is the stable, language-independent identity. Request-specific paths
-and rejected values belong in `details`. Unexpected failures remain sanitized and add a
-`traceId` that correlates with the server log. A client with a matching localized catalog
-may replace a known code's title and description; it should retain the server fallback for
-unknown codes.
-
-## GraphQL transport
-
-The optional adapter executes saved reports by id. It does not accept arbitrary
-report-state input.
-
-```csharp
-using InteractiveReport.Client.GraphQL;
-
-builder.Services.AddInteractiveReports(builder.Configuration);
-builder.Services.AddInteractiveReportGraphQL();
-
-app.MapInteractiveReportGraphQL("/graphql")
-    .RequireRateLimiting("reports");
-```
-
-See [GraphQL adapter](GRAPHQL.md) for the query shape, authorization sequence, limits,
-and errors.
-
-## Browser custom element
-
-The packaged module defines `<interactive-report>`. It uses a shadow root and exposes
-only the supported element interface; mutable controller state remains private.
-
-```html
-<script type="module" src="/api/reports/ui/ir.js"></script>
-
-<interactive-report
-  id="orders-report"
-  report="orders"
-  saved-report="87"
-  api-base="/api/reports"
-  stylesheet="/css/orders-report.css">
-</interactive-report>
-```
-
-### Attributes and properties
-
-| Attribute | Property | Meaning |
-|---|---|---|
-| `report` | none | Required appsettings report configuration name. Changing the attribute lists and activates that family. |
-| none | `reportId` (read-only) | Current saved-report ID as a string, or `null` when the working document has no saved association. |
-| none | `definitionName` (read-only) | Canonical configured definition key learned during activation. |
-| `saved-report` | none | Optional numeric document id to load on activation. |
-| `report-title` | `reportTitle` | Opt-in heading. An empty string uses the source title; absence/null hides it. |
-| `empty-message` | `emptyMessage` | Text shown when the current result has no rows. |
-| `controls` | `controls` | Space-separated string or array of canonical control names; null inherits server suggestions, an empty list hides optional controls. Explicit control overrides take precedence. |
-| `initial-page-size` | `initialPageSize` | Positive first-load page size; null inherits. Does not replace paging from an explicit saved-report activation. |
-| none | `initialDocument` | Detached initial `ReportState`, submitted directly through the query endpoint when no explicit saved report is requested. Later assignment takes effect on the next activation. |
-| none | `columnPresentation` | Detached column-name map restricted to `label`, `helpText`, and `hideLabel`. Presentation only. |
-| none | `editLink`, `createLink` | Instance link overrides using the definition's link shapes; null hides and undefined inherits. Edit placeholders must already be projected by the server-defined edit link. |
-| `api-base` | `apiBase` | API prefix. It is inferred from the module URL when omitted. |
-| `download-base` | `downloadBase` | File-download prefix. It is inferred from the API prefix when omitted. |
-| `lang` | none | Client locale. |
-| `theme` | `theme` | `light`, `dark`, or empty to follow the surrounding page and system preference. |
-| `disabled` | `disabled` | Makes all package-owned controls inert without clearing control overrides. |
-| `stylesheet` | `styleSheet` | Application-owned stylesheet URL inserted into this element's shadow root. Set the property to `null` to remove it. |
-
-For precedence, first-load behavior, and examples, see [instance configuration](EMBEDDING.md#configuring-individual-instances).
-
-### Methods
-
-| Method | Result |
+| Level | Events |
 |---|---|
-| `getReportDocument()` | Detached, JSON-compatible copy of the working report document: the accepted document plus any edits accumulated while a query is in flight. Requires a completed initial query. |
-| `submitReportDocument(document)` | Replaces, queries, adopts, and renders a document. Resolves to a detached result, or `undefined` when canceled or superseded. |
-| `getListOfValues({ document, table, column, search, signal })` | Posts a complete current document and returns `{ table, column, type, items, truncated }`; `document` and `table` default to the element's current values. |
-| `getExport(format = "csv", { signal } = {})` | Resolves to `{ blob, filename, contentType, truncated }` without starting a browser download. |
-| `setControlEnabled(name, enabled)` | Sets one client override. Use `null` to resume the server suggestion. Returns the effective state. |
-| `setControlOverrides(overrides)` | Atomically applies several overrides and returns the detached override map. |
-| `clearControlOverrides()` | Removes every client override. |
-| `isControlEnabled(name)` | Returns one effective control state. |
-| `getControlOverrides()` | Returns a detached object containing explicit client overrides. |
+| `Information` | Startup validation, each request with its status and duration, queries, saved-report changes and document synchronization. |
+| `Debug` | Authorization decisions, schema-cache activity and the SQL text of each command. |
+| `Warning`, `Error` | Fallbacks, skipped settings and failures, with the request's trace id. |
 
-Inputs and outputs are detached. Mutating a value returned by the element cannot reach
-its working state.
+Request bodies and SQL parameter values are never logged.
 
-```js
-const report = document.querySelector("#orders-report");
+## GraphQL
 
-const document = report.getReportDocument();
-document.search = "urgent";
-document.page.index = 1;
-
-const result = await report.submitReportDocument(document);
-console.log(result?.rows);
-
-const lov = await report.getListOfValues({
-  document,
-  table: document.activeTable,
-  column: "CUSTOMER",
-  search: "ac"
-});
-console.log(lov.items); // never more than 50
-```
-
-The `search` argument above is the LOV lookup text and is partial-match by default.
-When the packaged filter or highlight picker accepts a text value, it authors
-`LOWER(column) = LOWER(value)` for an exact case-insensitive match, or
-`WILDCARD_MATCH(column, pattern)` when typed text contains an unescaped `*`.
-
-### Query lifecycle events
-
-| Event | Timing and detail |
-|---|---|
-| `ir-before-query` | Fires for client-submitted hydration, not server-side document loads. Cancelable, bubbling, composed. `detail` is `{ document, source, requestId, signal }`. Synchronously mutate the detached document before transport, or call `preventDefault()` to cancel. |
-| `ir-query-complete` | Bubbling and composed after a load or query response is adopted and rendered. `detail` is detached `{ document, result, submitted, source, requestId }`; `submitted` is `null` for initial and saved-report loads. It is observational. |
-| `ir-action` | Bubbling and composed when an action-format cell is invoked. `detail` is `{ command, row, column }`. |
-
-`source` is `initial`, `user`, `saved-report`, `host`, or `refresh`.
-
-```js
-report.addEventListener("ir-before-query", event => {
-  event.detail.document.search = event.detail.document.search?.trim();
-});
-
-report.addEventListener("ir-query-complete", event => {
-  auditReportQuery(event.detail.source, event.detail.document);
-});
-```
-
-Ordinary package-control edits are single-flight. An edit on an idle widget queries
-immediately. Edits made while a query is in flight accumulate in the working document;
-the in-flight result is rendered when it lands, without replacing the working document,
-and one follow-up query carries the final state. Initial loads, saved-report loads,
-explicit `submitReportDocument` calls, and administration refreshes abort an
-in-flight query instead; an export posts the working document and leaves an in-flight
-query alone.
-
-### Client controls
-
-The server's `features` list supplies initial suggestions. The client may override
-them without changing the server's authorization or endpoint policies.
-
-```js
-report.setControlEnabled("filter", true);
-report.setControlEnabled("download", false);
-report.setControlEnabled("filter", null); // inherit the server suggestion
-
-report.setControlOverrides({ search: true, sort: false, savedReports: true });
-console.log(report.isControlEnabled("search"));
-console.log(report.getControlOverrides());
-report.clearControlOverrides();
-```
-
-Supported names are `search`, `columns`, `rename`, `columnSettings`, `filter`, `sort`,
-`pagination`, `controlBreak`, `highlight`, `aggregate`, `compute`, `groupBy`, `pivot`,
-`chart`, `savedReports`, and `download`. Names are matched case-insensitively.
-
-## Ownership boundaries at a glance
-
-| Concern | Owner |
-|---|---|
-| Base SQL, connection, limits, authorization, trusted context | Server definition and host application |
-| Report-state validation and SQL generation | Server engine |
-| Initial control availability | Server hint, interpreted by the client |
-| Effective packaged controls | Client, after host overrides |
-| Host stylesheet URL and CSS | Embedding application |
-| Search, filters, sorting, layouts, and other report state | User or host JavaScript, validated by the server |
+`AddInteractiveReportGraphQL` and `MapInteractiveReportGraphQL` add a query-only endpoint that lists and runs saved reports. See the [GraphQL adapter guide](GRAPHQL.md).

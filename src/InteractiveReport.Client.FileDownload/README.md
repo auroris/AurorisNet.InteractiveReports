@@ -1,41 +1,14 @@
 # AurorisNet.InteractiveReports.Client.FileDownload
 
-CSV and self-contained HTML downloads for Interactive Reports. This optional
-ASP.NET Core adapter executes a report document through the shared server and
-returns the current view as a file, applying the same report authorization,
-filters, sorting, and configured export limits.
+CSV and HTML downloads for [Interactive Reports](https://github.com/auroris/AurorisNet.InteractiveReports/blob/main/README.md). The package adds one route that runs a report document without paging and returns the result as a file, with the report's labels, format masks, filters and sort order.
 
-## Which package should I install?
+The Download menu of the report UI uses this route.
 
-**For browser reports with downloads, install both
-[AurorisNet.InteractiveReports](https://www.nuget.org/packages/AurorisNet.InteractiveReports/)
-and this package:**
+## Install
 
 ```sh
-dotnet add package AurorisNet.InteractiveReports
 dotnet add package AurorisNet.InteractiveReports.Client.FileDownload
 ```
-
-If the browser package is already installed, add only the file-download package.
-For a service that only exposes file downloads, this package can be used on its
-own; the browser/REST adapter is not required.
-
-## How the packages fit together
-
-| Package | Relationship to this adapter |
-|---|---|
-| [AurorisNet.InteractiveReports.AspNetCore](https://www.nuget.org/packages/AurorisNet.InteractiveReports.AspNetCore/) | Included dependency: report configuration, authorization, and server execution. |
-| [AurorisNet.InteractiveReports.Core](https://www.nuget.org/packages/AurorisNet.InteractiveReports.Core/) | Included through the server: report models, validation, and query engine. |
-| [AurorisNet.InteractiveReports](https://www.nuget.org/packages/AurorisNet.InteractiveReports/) | Optional companion: browser UI and REST API. Its download controls use this adapter. |
-| [AurorisNet.InteractiveReports.Client.GraphQL](https://www.nuget.org/packages/AurorisNet.InteractiveReports.Client.GraphQL/) | Separate optional adapter for querying saved reports through GraphQL.NET. |
-
-The file-download adapter calls the server directly. It includes neither the
-browser UI nor GraphQL, and neither of those adapters installs it automatically.
-It targets .NET 8; the host supplies its database's ADO.NET driver.
-
-## Register and map downloads
-
-In an ASP.NET Core host with report and connection settings configured:
 
 ```csharp
 using InteractiveReport.AspNetCore;
@@ -50,23 +23,20 @@ app.MapInteractiveReportFileDownload("/api/download");
 app.Run();
 ```
 
-In an existing browser-report application, keep its JSON registration and route
-mapping, and add the file-download registration before `builder.Build()` and
-mapping afterward. Register the shared server only once. Configure the host's
-usual authentication middleware for protected reports.
+In an application that already uses [AurorisNet.InteractiveReports](https://www.nuget.org/packages/AurorisNet.InteractiveReports/), keep its registration and add the two file-download lines. Call `AddInteractiveReports` once. The package also works without the browser package, for a service that only returns files.
 
-Post a report state document to `POST /api/download/{name}/csv` or
-`POST /api/download/{name}/html`. Exports request rows beyond the current page,
-subject to the report's limits. The default `/api/download` prefix matches the
-browser component's default download location.
+Post a report document to `POST /api/download/{name}/csv` or `POST /api/download/{name}/html`. The route:
 
-NuGet IDs use `AurorisNet.InteractiveReports`; C# namespaces remain
-`InteractiveReport.*`. Use matching versions when combining packages.
+- authorizes the `Export` action and requires the report's `download` feature;
+- returns every matching row, up to the report's `maxRows`;
+- sets the response header `X-IR-Truncated` to `true` when a CSV file was cut at that cap;
+- refuses an HTML file that would be incomplete, with status `422`.
+
+The package targets .NET 8 and brings in `AurorisNet.InteractiveReports.AspNetCore` and `AurorisNet.InteractiveReports.Core`. The five packages are released together. Use one version for all of them. C# namespaces are `InteractiveReport.*`.
 
 ## Documentation
 
-- [Integration API and file downloads](https://github.com/auroris/Interactive-Reports/blob/main/docs/API.md)
-- [Browser download controls](https://github.com/auroris/Interactive-Reports/blob/main/docs/EMBEDDING.md)
-- [Getting started and data sources](https://github.com/auroris/Interactive-Reports/blob/main/docs/GETTING-STARTED.md)
-- [Authorization](https://github.com/auroris/Interactive-Reports/blob/main/docs/AUTHORIZATION.md)
-- [Source and issues](https://github.com/auroris/Interactive-Reports)
+- [Repository README](https://github.com/auroris/AurorisNet.InteractiveReports/blob/main/README.md)
+- [File downloads](https://github.com/auroris/AurorisNet.InteractiveReports/blob/main/docs/API.md#file-downloads)
+- [Downloads in the browser element](https://github.com/auroris/AurorisNet.InteractiveReports/blob/main/docs/EMBEDDING.md#downloads-and-printing)
+- [Authorization](https://github.com/auroris/AurorisNet.InteractiveReports/blob/main/docs/AUTHORIZATION.md)
