@@ -184,7 +184,7 @@ The live-database tests run the engine against real SQL Server, Oracle and Postg
 
 ## Releases
 
-The packages follow the .NET platform packages: `Microsoft.Extensions.*` and the packages that move with the monthly .NET servicing release. Dependabot checks NuGet each day and npm each week. `ci.yml` tests each update and merges it, and starts `release.yml` when the update is of a package that a `src/` project references or of an npm package that is bundled into the browser UI. Versions are `MAJOR.MINOR.PATCH`. One release publishes all five packages, with symbols and `SHA256SUMS.txt`, to nuget.org and GitHub. The [release guide](https://github.com/auroris/AurorisNet.Build/blob/main/docs/releasing.md) describes the workflows and how to start a release by hand.
+The packages follow the .NET platform packages: `Microsoft.Extensions.*` and the packages that move with the monthly .NET servicing release. Dependabot checks NuGet and npm each week. `ci.yml` tests each update and merges it. An update ships when it is of a package that a `src/` project references or of an npm package that is bundled into the browser UI, and each week `weekly-release.yml` publishes the merged updates that ship as one release. Versions are `MAJOR.MINOR.PATCH`. One release publishes all five packages, with symbols and `SHA256SUMS.txt`, to nuget.org and GitHub. The [release guide](https://github.com/auroris/AurorisNet.Build/blob/main/docs/releasing.md) describes the workflows and how to start a release by hand.
 
 ## License
 

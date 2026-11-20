@@ -1,7 +1,7 @@
 name: CI
 
 # Tests each pull request, and merges a Dependabot update that passes. An update of a package that a project under src
-# references, or of an npm package that is bundled into the UI, then starts the Release workflow.
+# references, or of an npm package that is bundled into the UI, ships in the next weekly release.
 on:
   pull_request:
   workflow_dispatch:
@@ -72,7 +72,6 @@ jobs:
     permissions:
       contents: write
       pull-requests: write
-      actions: write
     steps:
       # The browser bundles and packaged help are built from npm packages and embedded in AurorisNet.InteractiveReports.
       # Test tooling and the in-browser demo's database are not shipped.

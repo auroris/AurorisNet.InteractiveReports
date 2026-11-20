@@ -86,7 +86,7 @@ The [release guide](https://github.com/auroris/AurorisNet.Build/blob/main/docs/r
 
 **Primary dependency.** The .NET platform packages: `Microsoft.Extensions.*`, which the libraries reference, and the packages that move with them in the monthly .NET servicing release.
 
-**Dependabot** ([`dependabot.yml`](../.github/dependabot.yml)) checks NuGet each day, and npm and workflow actions each week. It groups its pull requests:
+**Dependabot** ([`dependabot.yml`](../.github/dependabot.yml)) checks NuGet, npm and workflow actions each week. It groups its pull requests:
 
 | Ecosystem | Group | Packages |
 |---|---|---|
@@ -100,7 +100,7 @@ The [release guide](https://github.com/auroris/AurorisNet.Build/blob/main/docs/r
 
 **CI** ([`ci.yml`](../.github/workflows/ci.yml)) runs on each pull request, on Windows: `scripts/pack.ps1`, then the browser-server tests and the documentation tests. The live-database tests skip there, because no `IR_TEST_*` variable is set.
 
-**What starts a release.** After CI passes on a Dependabot pull request, the workflow merges it and starts `release.yml` when the update ships:
+**What starts a release.** After CI passes on a Dependabot pull request, the workflow merges it. Each week [`weekly-release.yml`](../.github/workflows/weekly-release.yml) starts `release.yml` once when an update merged since the last release ships:
 
 - a NuGet package that a project under `src/` references. The project files are read at merge time, so a new reference needs no workflow change;
 - any npm package except `@playwright/test`, `playwright`, `happy-dom` and `sql.js`, because the browser bundle and help page are built from npm packages and embedded in `AurorisNet.InteractiveReports`.
