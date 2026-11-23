@@ -39,6 +39,6 @@
   "dependencies": {
     "big.js": "7.0.1",
     "intl-messageformat": "12.2.0",
-    "sql.js": "^1.16.0"
+    "sql.js": "^1.17.0"
   }
 }
