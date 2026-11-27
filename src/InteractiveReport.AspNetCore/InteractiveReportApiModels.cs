@@ -41,6 +41,7 @@ public static class InteractiveReportErrorCodes
     public const string FeatureDisabled = "IR-1100";
     public const string UnsupportedExportFormat = "IR-1101";
     public const string ExportLimitExceeded = "IR-1102";
+    public const string UnsupportedContentType = "IR-1103";
 
     public const string MalformedReportState = "IR-1200";
     public const string ReportStateInvalid = "IR-1201";
@@ -97,6 +98,8 @@ internal static class InteractiveReportErrorCatalog
             ("Unsupported export format", "The requested export format is not supported."),
         InteractiveReportErrorCodes.ExportLimitExceeded =>
             ("Export limit exceeded", "Narrow the report filters and try again."),
+        InteractiveReportErrorCodes.UnsupportedContentType =>
+            ("Unsupported content type", "Send the request body as JSON with Content-Type: application/json."),
         InteractiveReportErrorCodes.MalformedReportState =>
             ("Malformed report state document", "The report state document is not valid JSON."),
         InteractiveReportErrorCodes.ReportStateInvalid =>

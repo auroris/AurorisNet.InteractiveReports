@@ -95,6 +95,7 @@ public static class EndpointExtensions
             invocation.HttpContext.Response.Headers.CacheControl = "no-store";
             return await next(invocation);
         });
+        group.AddEndpointFilter(InteractiveReportHttpRequest.RequireJsonBody);
         ProtectedApi(
                 group.MapGet("/{name}/schema", GetSchema),
                 ReportsTag,

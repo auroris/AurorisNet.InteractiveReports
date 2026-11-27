@@ -343,7 +343,7 @@ Directory entries come first, in the directory's order. Known identities follow 
 
 ## REST routes
 
-The table uses the default prefixes. Every request body must be sent as `Content-Type: application/json`; ASP.NET Core answers another content type with an empty `415`. Responses carry `Cache-Control: no-store`, except the browser assets, which use `no-cache` with an `ETag`.
+The table uses the default prefixes. Every route that reads a request body requires `Content-Type: application/json`, with or without a `charset`. ASP.NET Core routing answers another content type with an empty `415`, and the route answers a request with no `Content-Type` with `415` and `IR-1103`. A browser sends a POST without a content type to a same-site URL with the signed-in person's cookie and no CORS preflight, so the requirement keeps a page on a sibling subdomain from saving or uploading on that person's behalf. Responses carry `Cache-Control: no-store`, except the browser assets, which use `no-cache` with an `ETag`.
 
 | Method and route | What it does |
 |---|---|
@@ -484,7 +484,7 @@ Every failure of a data route is one JSON object:
 | `403` | The caller is signed in and the operation is denied or the feature is off. |
 | `404` | The report or saved report does not exist, or the caller may not know that it does. Only `code`, `title` and `description` are returned. |
 | `409` | A saved-report title is taken, or configuration owns the default. |
-| `415` | The request body is not declared as JSON. The body is empty. |
+| `415` | The request body is not declared as JSON. A request with no `Content-Type` receives `IR-1103`; another content type receives an empty body. |
 | `422` | An HTML download would be incomplete. |
 | `500` | An unexpected failure, with `traceId`. |
 
@@ -499,6 +499,7 @@ Every failure of a data route is one JSON object:
 | `IR-1100` | The feature is not enabled for the report. |
 | `IR-1101` | Unsupported download format. |
 | `IR-1102` | The download exceeds the row cap or the HTML size limit. |
+| `IR-1103` | A route that reads a body received a request with no `Content-Type`. Send the body as `application/json`. |
 | `IR-1200` | The report document is not valid JSON. |
 | `IR-1201` | The report document failed validation. `details` lists a path and message for each error. |
 | `IR-1202` | The report could not be processed. |

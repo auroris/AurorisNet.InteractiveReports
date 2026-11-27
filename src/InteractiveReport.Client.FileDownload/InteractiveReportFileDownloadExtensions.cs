@@ -105,6 +105,7 @@ public static class InteractiveReportFileDownloadExtensions
             invocation.HttpContext.Response.Headers.CacheControl = "no-store";
             return await next(invocation);
         });
+        group.AddEndpointFilter(InteractiveReportHttpRequest.RequireJsonBody);
         group.MapPost("/{name}/{format}", Download)
             .WithTags("Interactive Reports - File Downloads")
             .WithSummary("Download a report file")

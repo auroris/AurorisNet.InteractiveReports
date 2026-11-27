@@ -1,16 +1,40 @@
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Http.Metadata;
 
 namespace InteractiveReport.AspNetCore;
 
 /// <summary>
 /// Request-side plumbing every HTTP client shares: projecting the exchange onto the
-/// transport-neutral request context and naming downloads. Adapters differ in what they
-/// produce; how they read a request must not. (Body content types need no gate here: every
-/// body-reading route declares <c>Accepts("application/json")</c>, which the framework enforces
-/// with a 415 before any handler or filter runs.)
+/// transport-neutral request context, refusing bodies not declared as JSON, and naming
+/// downloads. Adapters differ in what they produce; how they read a request must not.
 /// </summary>
 public static class InteractiveReportHttpRequest
 {
+    /// <summary>
+    /// Group endpoint filter that refuses, with 415 and <c>IR-1103</c>, a request to a
+    /// body-reading route whose content type is not JSON. A route reads a body exactly when it
+    /// declares <c>Accepts("application/json")</c>. Routing already answers another declared
+    /// content type with an empty 415, but it lets a request with no <c>Content-Type</c> through,
+    /// and such a POST is a simple request: a same-site page can send it with the caller's
+    /// cookie and no CORS preflight.
+    /// </summary>
+    /// <param name="invocation">The current endpoint invocation.</param>
+    /// <param name="next">The next filter or the route handler.</param>
+    /// <returns>The coded 415 result, or the downstream result.</returns>
+    internal static ValueTask<object?> RequireJsonBody(
+        EndpointFilterInvocationContext invocation,
+        EndpointFilterDelegate next)
+    {
+        var http = invocation.HttpContext;
+        if (http.GetEndpoint()?.Metadata.GetMetadata<IAcceptsMetadata>() is null
+            || http.Request.HasJsonContentType())
+            return next(invocation);
+
+        return ValueTask.FromResult<object?>(InteractiveReportHttpResult.Error(
+            InteractiveReportErrorCodes.UnsupportedContentType,
+            StatusCodes.Status415UnsupportedMediaType));
+    }
+
     /// <summary>
     /// Projects the current HTTP exchange onto the request context the server boundary consumes.
     /// </summary>

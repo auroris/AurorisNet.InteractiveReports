@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Net;
+using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Security.Claims;
 using System.Text;
@@ -893,6 +894,101 @@ public sealed class InteractiveReportAuthorizationHttpTests
         using var accepted = await host.Client.SendAsync(Request(
             HttpMethod.Post, "/api/reports/orders/query", null, new { }), TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, accepted.StatusCode);
+    }
+
+    [Fact]
+    public async Task Bodies_without_a_content_type_are_refused_on_every_route_that_reads_one()
+    {
+        // A POST with no Content-Type is a simple request: a page on a sibling subdomain can send
+        // it with the signed-in person's SameSite=Lax cookie and no CORS preflight. Routing's
+        // Accepts check lets a missing content type through, so the routes refuse it themselves.
+        await using var host = await Start(administrators: ["admin"]);
+        var savedId = await CreateSavedReport(host);
+
+        var answers = new List<string>();
+        foreach (var (method, path, body) in BodyRoutes(savedId))
+        {
+            using var response = await SendBody(host, method, path, body, contentType: null);
+            answers.Add($"{method} {path}: {(int)response.StatusCode}");
+            if (response.StatusCode == HttpStatusCode.UnsupportedMediaType)
+                Assert.Equal("IR-1103", (await ReadJson(response)).GetProperty("code").GetString());
+        }
+
+        Assert.All(answers, answer => Assert.EndsWith(": 415", answer));
+    }
+
+    [Fact]
+    public async Task Bodies_declared_as_json_reach_every_route_and_other_bodies_do_not()
+    {
+        await using var host = await Start(administrators: ["admin"]);
+        var savedId = await CreateSavedReport(host);
+
+        foreach (var contentType in new[] { "application/json", "application/json; charset=utf-8" })
+        {
+            foreach (var (method, path, body) in BodyRoutes(savedId))
+            {
+                using var accepted = await SendBody(host, method, path, body, contentType);
+                Assert.True(
+                    accepted.IsSuccessStatusCode,
+                    $"{method} {path} as {contentType} answered {(int)accepted.StatusCode}");
+            }
+        }
+
+        foreach (var (method, path, body) in BodyRoutes(savedId))
+        {
+            using var refused = await SendBody(host, method, path, body, "text/plain");
+            Assert.True(
+                refused.StatusCode == HttpStatusCode.UnsupportedMediaType,
+                $"{method} {path} as text/plain answered {(int)refused.StatusCode}");
+        }
+
+        using var deleted = await host.Client.SendAsync(Request(
+            HttpMethod.Delete, $"/api/reports/{savedId}", "admin"), TestContext.Current.CancellationToken);
+        Assert.Equal(HttpStatusCode.NoContent, deleted.StatusCode);
+    }
+
+    /// <summary>Every mapped route that reads a request body, with a body each one accepts.</summary>
+    private static IEnumerable<(HttpMethod Method, string Path, object Body)> BodyRoutes(long savedId)
+    {
+        yield return (HttpMethod.Post, "/api/reports/orders/query", new { });
+        yield return (HttpMethod.Post, "/api/reports/orders/lov",
+            new { document = new { }, table = "definition", column = "LABEL" });
+        yield return (HttpMethod.Post, "/api/download/orders/csv", new { });
+        yield return (HttpMethod.Post, "/api/reports/orders/saved",
+            new { title = $"Saved {Guid.NewGuid():N}", state = new { v = 3 } });
+        yield return (HttpMethod.Put, $"/api/reports/{savedId}", new { title = $"Renamed {Guid.NewGuid():N}" });
+        yield return (HttpMethod.Put, "/api/reports/admin/administrators", new { identities = new[] { "admin" } });
+        yield return (HttpMethod.Post, "/api/reports/admin/orders/documents",
+            new { title = $"Uploaded {Guid.NewGuid():N}", state = new { v = 3 } });
+    }
+
+    private static async Task<long> CreateSavedReport(RunningHost host)
+    {
+        using var created = await host.Client.SendAsync(Request(
+            HttpMethod.Post,
+            "/api/reports/orders/saved",
+            "admin",
+            new { title = $"Target {Guid.NewGuid():N}", state = new { v = 3 } }), TestContext.Current.CancellationToken);
+        Assert.Equal(HttpStatusCode.Created, created.StatusCode);
+        return (await ReadJson(created)).GetProperty("id").GetInt64();
+    }
+
+    /// <summary>Sends a JSON body as the administrator, declared with exactly the given content type or none.</summary>
+    private static async Task<HttpResponseMessage> SendBody(
+        RunningHost host,
+        HttpMethod method,
+        string path,
+        object body,
+        string? contentType)
+    {
+        using var request = new HttpRequestMessage(method, path)
+        {
+            Content = new ByteArrayContent(JsonSerializer.SerializeToUtf8Bytes(body)),
+        };
+        if (contentType is not null)
+            request.Content.Headers.ContentType = MediaTypeHeaderValue.Parse(contentType);
+        request.Headers.Add("X-Test-Identity", "admin");
+        return await host.Client.SendAsync(request, TestContext.Current.CancellationToken);
     }
 
     [Fact]

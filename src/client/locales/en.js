@@ -11,6 +11,7 @@ export const errors = {
     "IR-1100": ["Feature disabled", "This feature is not enabled for the report."],
     "IR-1101": ["Unsupported export format", "The requested export format is not supported."],
     "IR-1102": ["Export limit exceeded", "Narrow the report filters and try again."],
+    "IR-1103": ["Unsupported content type", "Send the request body as JSON with Content-Type: application/json."],
     "IR-1200": ["Malformed report state document", "The report state document is not valid JSON."],
     "IR-1201": ["Report state failed validation", "One or more report settings are invalid."],
     "IR-1202": ["Report execution failed", "An unexpected error occurred while processing the report."],

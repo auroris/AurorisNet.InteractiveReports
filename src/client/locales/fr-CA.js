@@ -11,6 +11,7 @@ export const errors = {
     "IR-1100": ["Fonctionnalité désactivée", "Cette fonctionnalité n’est pas activée pour le rapport."],
     "IR-1101": ["Format d’exportation non pris en charge", "Le format d’exportation demandé n’est pas pris en charge."],
     "IR-1102": ["Limite d’exportation dépassée", "Affinez les filtres du rapport et réessayez."],
+    "IR-1103": ["Type de contenu non pris en charge", "Envoyez le corps de la requête en JSON avec Content-Type: application/json."],
     "IR-1200": ["État du rapport mal formé", "Le document d’état du rapport n’est pas au format JSON valide."],
     "IR-1201": ["Échec de la validation de l’état du rapport", "Un ou plusieurs paramètres du rapport ne sont pas valides."],
     "IR-1202": ["Échec de l’exécution du rapport", "Une erreur inattendue s’est produite pendant le traitement du rapport."],
